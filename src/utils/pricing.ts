@@ -24,10 +24,16 @@ export interface PricingSettingsInput {
   pricing_mode?: PricingMode | string;
   fixedProfitMargin?: number | string;
   fixed_profit_margin?: number | string;
+  fixedProfitAmount?: number | string;
+  fixed_profit_amount?: number | string;
   minProfitMargin?: number | string;
   min_profit_margin?: number | string;
+  minProfitAmount?: number | string;
+  min_profit_amount?: number | string;
   maxProfitMargin?: number | string;
   max_profit_margin?: number | string;
+  maxProfitAmount?: number | string;
+  max_profit_amount?: number | string;
   currencySymbol?: string;
   currency_symbol?: string;
 }

@@ -46,8 +46,11 @@ export const companySettings = pgTable('company_settings', {
   lowStockLimit: integer('low_stock_limit').default(5).notNull(),
   pricingMode: text('pricing_mode').default('NEGOTIABLE').notNull(),
   fixedProfitMargin: numeric('fixed_profit_margin', { precision: 5, scale: 2 }).default('30.00'),
+  fixedProfitAmount: numeric('fixed_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
   minProfitMargin: numeric('min_profit_margin', { precision: 5, scale: 2 }).default('15.00'),
+  minProfitAmount: numeric('min_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
   maxProfitMargin: numeric('max_profit_margin', { precision: 5, scale: 2 }).default('30.00'),
+  maxProfitAmount: numeric('max_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
   isInstalled: boolean('is_installed').default(false).notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

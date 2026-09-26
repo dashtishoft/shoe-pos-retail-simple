@@ -49,10 +49,16 @@ export interface CompanySettings {
   pricing_mode?: 'FIXED' | 'NEGOTIABLE';
   fixedProfitMargin?: number;
   fixed_profit_margin?: number;
+  fixedProfitAmount?: number;
+  fixed_profit_amount?: number;
   minProfitMargin?: number;
   min_profit_margin?: number;
+  minProfitAmount?: number;
+  min_profit_amount?: number;
   maxProfitMargin?: number;
   max_profit_margin?: number;
+  maxProfitAmount?: number;
+  max_profit_amount?: number;
   updatedAt: string;
 }
 

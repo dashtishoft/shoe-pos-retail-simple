@@ -306,28 +306,37 @@ router.post('/ai-suggest', requireAuth, async (req: AuthenticatedRequest, res: R
 export async function getCompanyPricingSettings(): Promise<{
   pricingMode: string;
   minProfitMargin: number;
+  minProfitAmount: number;
   maxProfitMargin: number;
+  maxProfitAmount: number;
   fixedProfitMargin: number;
+  fixedProfitAmount: number;
   currencySymbol: string;
 }> {
   try {
     const res = await pgClient.query<any>(
-      'SELECT pricing_mode, min_profit_margin, max_profit_margin, fixed_profit_margin, currency_symbol FROM company_settings LIMIT 1'
+      'SELECT pricing_mode, min_profit_margin, min_profit_amount, max_profit_margin, max_profit_amount, fixed_profit_margin, fixed_profit_amount, currency_symbol FROM company_settings LIMIT 1'
     );
     const row = res.rows[0];
     return {
       pricingMode: (row?.pricing_mode || 'NEGOTIABLE').toUpperCase(),
       minProfitMargin: parseFloat(row?.min_profit_margin ?? '15') || 15,
+      minProfitAmount: parseFloat(row?.min_profit_amount ?? '0') || 0,
       maxProfitMargin: parseFloat(row?.max_profit_margin ?? '30') || 30,
+      maxProfitAmount: parseFloat(row?.max_profit_amount ?? '0') || 0,
       fixedProfitMargin: parseFloat(row?.fixed_profit_margin ?? '30') || 30,
+      fixedProfitAmount: parseFloat(row?.fixed_profit_amount ?? '0') || 0,
       currencySymbol: row?.currency_symbol || 'Rs.',
     };
   } catch {
     return {
       pricingMode: 'NEGOTIABLE',
       minProfitMargin: 15,
+      minProfitAmount: 0,
       maxProfitMargin: 30,
+      maxProfitAmount: 0,
       fixedProfitMargin: 30,
+      fixedProfitAmount: 0,
       currencySymbol: 'Rs.',
     };
   }

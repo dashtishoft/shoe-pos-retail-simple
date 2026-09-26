@@ -55,10 +55,16 @@ router.get('/', async (_req: Request, res: Response) => {
         pricing_mode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
         fixedProfitMargin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
         fixed_profit_margin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
+        fixedProfitAmount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
+        fixed_profit_amount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
         minProfitMargin: parseFloat(s.min_profit_margin ?? '15') || 15,
         min_profit_margin: parseFloat(s.min_profit_margin ?? '15') || 15,
+        minProfitAmount: parseFloat(s.min_profit_amount ?? '0') || 0,
+        min_profit_amount: parseFloat(s.min_profit_amount ?? '0') || 0,
         maxProfitMargin: parseFloat(s.max_profit_margin ?? '30') || 30,
         max_profit_margin: parseFloat(s.max_profit_margin ?? '30') || 30,
+        maxProfitAmount: parseFloat(s.max_profit_amount ?? '0') || 0,
+        max_profit_amount: parseFloat(s.max_profit_amount ?? '0') || 0,
         isInstalled: Boolean(s.is_installed),
         is_installed: Boolean(s.is_installed),
         updatedAt: s.updated_at,
@@ -126,14 +132,26 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
     const minProfitMargin = rawMinMargin !== undefined && rawMinMargin !== null && rawMinMargin !== ''
       ? Math.max(0, Math.min(100, parseFloat(rawMinMargin) || 0))
       : 10;
+    const rawMinAmount = req.body.min_profit_amount !== undefined ? req.body.min_profit_amount : req.body.minProfitAmount;
+    const minProfitAmount = rawMinAmount !== undefined && rawMinAmount !== null && rawMinAmount !== ''
+      ? Math.max(0, parseFloat(rawMinAmount) || 0)
+      : 0;
     const rawMaxMargin = req.body.max_profit_margin !== undefined ? req.body.max_profit_margin : req.body.maxProfitMargin;
     const maxProfitMargin = rawMaxMargin !== undefined && rawMaxMargin !== null && rawMaxMargin !== ''
       ? Math.max(0, Math.min(1000, parseFloat(rawMaxMargin) || 0))
       : 30;
+    const rawMaxAmount = req.body.max_profit_amount !== undefined ? req.body.max_profit_amount : req.body.maxProfitAmount;
+    const maxProfitAmount = rawMaxAmount !== undefined && rawMaxAmount !== null && rawMaxAmount !== ''
+      ? Math.max(0, parseFloat(rawMaxAmount) || 0)
+      : 0;
     const rawFixedMargin = req.body.fixed_profit_margin !== undefined ? req.body.fixed_profit_margin : req.body.fixedProfitMargin;
     const fixedProfitMargin = rawFixedMargin !== undefined && rawFixedMargin !== null && rawFixedMargin !== ''
       ? Math.max(0, Math.min(1000, parseFloat(rawFixedMargin) || 0))
       : 30;
+    const rawFixedAmount = req.body.fixed_profit_amount !== undefined ? req.body.fixed_profit_amount : req.body.fixedProfitAmount;
+    const fixedProfitAmount = rawFixedAmount !== undefined && rawFixedAmount !== null && rawFixedAmount !== ''
+      ? Math.max(0, parseFloat(rawFixedAmount) || 0)
+      : 0;
     const rawPricingMode = String(req.body.pricing_mode || req.body.pricingMode || 'NEGOTIABLE').toUpperCase();
     const pricingMode = rawPricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE';
     const currencyCode = req.body.currency || 'PKR';
@@ -179,7 +197,8 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
          currency_name = $9, currency = $10, currency_symbol = $11,
          barcode_prefix = $12, purchase_prefix = $13, invoice_prefix = $14,
          invoice_footer = $15, low_stock_limit = $16, min_profit_margin = $17, max_profit_margin = $18,
-         pricing_mode = $19, fixed_profit_margin = $20, updated_at = NOW()
+         pricing_mode = $19, fixed_profit_margin = $20, fixed_profit_amount = $21,
+         min_profit_amount = $22, max_profit_amount = $23, updated_at = NOW()
        WHERE id = (SELECT id FROM company_settings LIMIT 1)
        RETURNING *`,
       [
@@ -203,6 +222,9 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
         maxProfitMargin,
         pricingMode,
         fixedProfitMargin,
+        fixedProfitAmount,
+        minProfitAmount,
+        maxProfitAmount,
       ]
     );
 
@@ -248,10 +270,16 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
         pricing_mode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
         fixedProfitMargin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
         fixed_profit_margin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
+        fixedProfitAmount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
+        fixed_profit_amount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
         minProfitMargin: parseFloat(s.min_profit_margin ?? '10') || 10,
         min_profit_margin: parseFloat(s.min_profit_margin ?? '10') || 10,
+        minProfitAmount: parseFloat(s.min_profit_amount ?? '0') || 0,
+        min_profit_amount: parseFloat(s.min_profit_amount ?? '0') || 0,
         maxProfitMargin: parseFloat(s.max_profit_margin ?? '30') || 30,
         max_profit_margin: parseFloat(s.max_profit_margin ?? '30') || 30,
+        maxProfitAmount: parseFloat(s.max_profit_amount ?? '0') || 0,
+        max_profit_amount: parseFloat(s.max_profit_amount ?? '0') || 0,
         updatedAt: s.updated_at,
       },
     });
