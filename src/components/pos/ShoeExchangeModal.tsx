@@ -289,7 +289,7 @@ export const ShoeExchangeModal: React.FC<ShoeExchangeModalProps> = ({
                             {item.article || item.productName}
                           </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex flex-wrap gap-x-3 mt-0.5">
-                            {item.sku && <span>SKU: {item.sku}</span>}
+                            {item.barcode && <span>Barcode: {item.barcode}</span>}
                             <span>Sold: {item.soldQuantity}</span>
                             <span>Returned: {item.alreadyReturnedQuantity}</span>
                             <span className={item.returnableQuantity > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-slate-400'}>

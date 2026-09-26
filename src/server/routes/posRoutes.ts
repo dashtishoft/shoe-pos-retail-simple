@@ -570,4 +570,40 @@ router.get('/sales/:id', requireAuth, async (req, res: Response) => {
   }
 });
 
+// GET /api/pos/carton-packs - List available carton packing configurations from carton_packs table
+router.get('/carton-packs', async (_req, res) => {
+  try {
+    const packsRes = await pgClient.query<{
+      id: number;
+      pack_name: string;
+      pairs_per_carton: number;
+      is_default: boolean;
+    }>(
+      `SELECT id, pack_name, pairs_per_carton, is_default FROM carton_packs ORDER BY pairs_per_carton ASC`
+    );
+
+    if (packsRes.rows.length === 0) {
+      const fallbackPacks = [
+        { id: 1, pack_name: 'Half Carton (6 Pairs)', pairs_per_carton: 6, is_default: false },
+        { id: 2, pack_name: 'Standard Carton (12 Pairs)', pairs_per_carton: 12, is_default: true },
+        { id: 3, pack_name: 'Wholesale Pack (24 Pairs)', pairs_per_carton: 24, is_default: false },
+        { id: 4, pack_name: 'Master Carton (36 Pairs)', pairs_per_carton: 36, is_default: false },
+      ];
+      return res.json({ cartonPacks: fallbackPacks });
+    }
+
+    res.json({ cartonPacks: packsRes.rows });
+  } catch (err: any) {
+    // Graceful fallback to default pack configurations
+    const fallbackPacks = [
+      { id: 1, pack_name: 'Half Carton (6 Pairs)', pairs_per_carton: 6, is_default: false },
+      { id: 2, pack_name: 'Standard Carton (12 Pairs)', pairs_per_carton: 12, is_default: true },
+      { id: 3, pack_name: 'Wholesale Pack (24 Pairs)', pairs_per_carton: 24, is_default: false },
+      { id: 4, pack_name: 'Master Carton (36 Pairs)', pairs_per_carton: 36, is_default: false },
+    ];
+    res.json({ cartonPacks: fallbackPacks });
+  }
+});
+
 export default router;
+

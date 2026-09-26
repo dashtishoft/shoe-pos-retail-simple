@@ -22,19 +22,21 @@ import {
   CheckCircle2,
   Lock,
   ImageIcon,
+  Boxes,
 } from 'lucide-react';
 import { api } from '../../services/api.ts';
 import { playAudioFeedback } from '../../utils/audio.ts';
 import { InvoicePrintModal } from './InvoicePrintModal.tsx';
 import { ShoeExchangeModal } from './ShoeExchangeModal.tsx';
 import { formatStockPrice, cleanStockPriceInput, getProductRetailPrice, getProductMinFloorPrice } from '../../utils/priceFormat.ts';
-import type { ActiveExchange } from '../../types.ts';
+import type { ActiveExchange, CartonPack, PosAddToCartPayload } from '../../types.ts';
 import { offlineQueueService } from '../../services/offlineQueueService.ts';
 import { lookupCachedProductOffline, searchCachedProductsOffline } from '../../utils/offlineDb.ts';
 import { useOfflineSync } from '../../utils/useOfflineSync.ts';
 import { OfflineSyncModal } from './OfflineSyncModal.tsx';
 import { BrandLogo } from '../common/BrandLogo.tsx';
 import { CustomerPicker } from './CustomerPicker.tsx';
+import { PosItemSelection } from './PosItemSelection.tsx';
 
 interface CartItem {
   productId: number;
@@ -43,6 +45,7 @@ interface CartItem {
   brandName?: string;
   brandLogo?: string;
   sku: string;
+  size?: string;
   barcode: string;
   totalStock: number;
   costPrice: number;
@@ -56,6 +59,11 @@ interface CartItem {
   subtotal: number;
   isPriceOverridden?: boolean;
   originalPrice?: number;
+  // Carton pack attributes when added via carton pack item selection
+  cartonPackId?: number;
+  cartons?: number;
+  pairsPerCarton?: number;
+  packName?: string;
 }
 
 interface PosTerminalProps {
@@ -133,6 +141,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   // Floor protection notice for clamped prices in cart
   const [cartFloorNotice, setCartFloorNotice] = useState<{ productId: number; message: string } | null>(null);
 
+  // Carton Pack Selection Module State
+  const [selectedProductForCartonPack, setSelectedProductForCartonPack] = useState<any | null>(null);
+  const [cartonPacksList, setCartonPacksList] = useState<CartonPack[]>([]);
+
   // Price pop animation trigger state for visual feedback when items are added or quantities adjusted
   const [pricePopTrigger, setPricePopTrigger] = useState(0);
   const prevCartSummaryRef = useRef<string | null>(null);
@@ -187,9 +199,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
 
-  // Load Customers
+  // Load Customers & Carton Packs
   useEffect(() => {
     loadCustomers();
+    loadCartonPacks();
     // Auto-focus scanner on mount
     focusScannerInput();
 
@@ -199,6 +212,17 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     window.addEventListener('focus', handleWindowFocus);
     return () => window.removeEventListener('focus', handleWindowFocus);
   }, []);
+
+  const loadCartonPacks = async () => {
+    try {
+      const res = await api.pos.getCartonPacks().catch(() => null);
+      if (res?.cartonPacks && Array.isArray(res.cartonPacks)) {
+        setCartonPacksList(res.cartonPacks);
+      }
+    } catch (err) {
+      console.warn('Failed to load carton packs:', err);
+    }
+  };
 
   // Sync initial exchange from parent / Returns view
   useEffect(() => {
@@ -267,7 +291,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       handleCheckout();
     } else if (cart.length === 0) {
       playAudioFeedback.warning();
-      setErrorMessage('Cannot print receipt: cart is empty. Scan product SKUs first.');
+      setErrorMessage('Cannot print receipt: cart is empty. Scan barcode or search article first.');
       setTimeout(() => setErrorMessage(null), 3000);
       focusScannerInput();
     }
@@ -437,18 +461,18 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
       if (!matchedProduct) {
         playAudioFeedback.warning();
-        setErrorMessage(`No product found matching SKU or Barcode "${query}".`);
+        setErrorMessage(`No product found matching Barcode or Article "${query}".`);
         return;
       }
 
       // Stock check
       if (matchedProduct.totalStock <= 0) {
         playAudioFeedback.warning();
-        setErrorMessage(`Product "${matchedProduct.article || matchedProduct.name}" (${matchedProduct.sku}) is OUT OF STOCK (0 pairs available).`);
+        setErrorMessage(`Product "${matchedProduct.article || matchedProduct.name}" is OUT OF STOCK (0 pairs available).`);
         return;
       }
 
-      // Barcode / SKU accepted and added to invoice: play confirmation beeps!
+      // Barcode / Article accepted and added to invoice: play confirmation beeps!
       playAudioFeedback.barcodeScan();
       playAudioFeedback.invoiceItemAdded();
 
@@ -456,7 +480,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
       // Flash brief confirmation badge
       setLastScannedFeedback({
-        message: 'Product SKU scanned & added to invoice',
+        message: 'Product added to invoice',
         article: matchedProduct.article || matchedProduct.name,
         sku: matchedProduct.sku,
       });
@@ -652,6 +676,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           return prevCart;
         }
 
+        const itemSize = product.size || (product.sku ? product.sku.split('-').pop() : '42') || '42';
+
         const item: CartItem = {
           productId: product.id,
           article: prodIdentifier,
@@ -659,6 +685,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           brandName: product.brandName || product.brand_name || '',
           brandLogo: product.brandLogo || product.brand_logo || '',
           sku: product.sku,
+          size: itemSize,
           barcode: product.barcode,
           totalStock: product.totalStock,
           costPrice: cost,
@@ -679,6 +706,113 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     setErrorMessage(null);
     // Automatically regain focus on search input after adding product, enabling continuous scanning
+    focusScannerInput(continuousScan);
+  };
+
+  /**
+   * Handle item addition from the POS item selection module with dynamic carton pack multiplier calculation.
+   * Expected Component Payload: { productId, cartonPackId, cartons, totalPairs, totalPrice }
+   */
+  const handleAddCartonPackToCart = (payload: PosAddToCartPayload) => {
+    const product = payload.product || selectedProductForCartonPack;
+    if (!product) return;
+
+    const prodIdentifier = product.article || product.name || 'Shoe';
+    const cost = Math.max(0, Math.round(Number(
+      product.costPrice !== undefined && product.costPrice !== null
+        ? product.costPrice
+        : product.cost_price !== undefined && product.cost_price !== null
+        ? product.cost_price
+        : 0
+    )));
+
+    const itemPolicy: 'FIXED' | 'NEGOTIABLE' = String(
+      product.marginType ||
+      product.margin_type ||
+      (product.salePrice !== undefined && product.salePrice !== null ? 'FIXED' : (companySettings?.pricing_mode || 'FIXED'))
+    ).toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+
+    const isItemFixed = itemPolicy === 'FIXED';
+
+    // Resolved unit selling price per pair
+    const calcUnitPrice = payload.unitPrice || Math.round(payload.totalPrice / (payload.totalPairs || 1));
+    const addedQuantity = Math.max(1, Math.round(payload.totalPairs));
+
+    setCart((prevCart) => {
+      const existingIdx = prevCart.findIndex((item) => item.productId === payload.productId);
+
+      if (existingIdx >= 0) {
+        const existing = prevCart[existingIdx];
+        const newQty = existing.quantity + addedQuantity;
+        if (newQty > product.totalStock) {
+          playAudioFeedback.warning();
+          setErrorMessage(`Cannot add more. Stock limit for "${prodIdentifier}" is ${product.totalStock}.`);
+          return prevCart;
+        }
+
+        const updated = [...prevCart];
+        const subtotal = newQty * existing.unitPrice - existing.discount;
+        updated[existingIdx] = {
+          ...existing,
+          quantity: newQty,
+          subtotal: Math.max(0, subtotal),
+          cartonPackId: payload.cartonPackId,
+          cartons: (existing.cartons || 0) + payload.cartons,
+          pairsPerCarton: payload.pairsPerCarton,
+          packName: payload.packName,
+        };
+        return updated;
+      } else {
+        if (product.totalStock < addedQuantity) {
+          playAudioFeedback.warning();
+          setErrorMessage(`Stock shortage: Only ${product.totalStock} pairs in stock, requested ${addedQuantity} pairs.`);
+          return prevCart;
+        }
+
+        const itemSize = product.size || (product.sku ? product.sku.split('-').pop() : '42') || '42';
+
+        const item: CartItem = {
+          productId: payload.productId,
+          article: prodIdentifier,
+          name: prodIdentifier,
+          brandName: product.brandName || product.brand_name || '',
+          brandLogo: product.brandLogo || product.brand_logo || '',
+          sku: product.sku,
+          size: itemSize,
+          barcode: product.barcode,
+          totalStock: product.totalStock,
+          costPrice: cost,
+          pricingPolicy: itemPolicy,
+          salePrice: calcUnitPrice,
+          minSalePrice: calcUnitPrice,
+          maxSalePrice: calcUnitPrice,
+          unitPrice: calcUnitPrice,
+          quantity: addedQuantity,
+          discount: 0,
+          subtotal: payload.totalPrice || (addedQuantity * calcUnitPrice),
+          isPriceOverridden: false,
+          originalPrice: calcUnitPrice,
+          cartonPackId: payload.cartonPackId,
+          cartons: payload.cartons,
+          pairsPerCarton: payload.pairsPerCarton,
+          packName: payload.packName,
+        };
+        return [item, ...prevCart];
+      }
+    });
+
+    playAudioFeedback.barcodeScan();
+    playAudioFeedback.invoiceItemAdded();
+    setLastScannedFeedback({
+      message: `Added ${payload.cartons} ctn (${payload.totalPairs} pairs)`,
+      article: prodIdentifier,
+      sku: product.sku,
+    });
+    setTimeout(() => setLastScannedFeedback(null), 3200);
+
+    setSelectedProductForCartonPack(null);
+    setBarcodeInput('');
+    setSearchResults([]);
     focusScannerInput(continuousScan);
   };
 
@@ -1164,13 +1298,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       e.target.select();
                     }
                   }}
-                  placeholder={
-                    inputMode === 'SCANNER'
-                      ? continuousScan
-                        ? 'Continuous scan active: Scan barcode or SKU (retains code without clearing)...'
-                        : 'Scan product SKU or Barcode with physical scanner (Press Enter to add)...'
-                      : 'Search products by Article name, SKU, or category...'
-                  }
+                  placeholder="Scan Barcode or Type Article..."
                   className="w-full pl-[2.125rem] pr-40 py-3 bg-white dark:bg-[#0A0E1A] border-2 border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-all focus:border-purple-600 dark:focus:border-purple-500 focus:ring-2 focus:ring-purple-100 dark:focus:ring-purple-950/40 font-mono"
                   autoComplete="off"
                   autoFocus
@@ -1212,17 +1340,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 style={{ color: '#ffffff' }}
                 className="btn-pure-white px-6 py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-800 active:from-purple-800 active:to-indigo-800 dark:from-purple-600 dark:to-indigo-600 !text-white text-white font-bold text-sm rounded-xl border border-purple-400/40 dark:border-purple-400/50 shadow-md shadow-purple-600/25 dark:shadow-[0_0_18px_rgba(147,51,234,0.35)] transition-all flex items-center gap-2 shrink-0 cursor-pointer active:scale-95"
               >
-                {inputMode === 'SCANNER' ? (
-                  <>
-                    <Barcode className="w-4 h-4 !text-white" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                    <span className="!text-white font-bold text-white" style={{ color: '#ffffff' }}>Add SKU (Enter)</span>
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-4 h-4 !text-white" style={{ color: '#ffffff', stroke: '#ffffff' }} />
-                    <span className="!text-white font-bold text-white" style={{ color: '#ffffff' }}>Lookup</span>
-                  </>
-                )}
+                <Barcode className="w-4 h-4 !text-white" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                <span className="!text-white font-bold text-white" style={{ color: '#ffffff' }}>Scan Barcode / Search Article</span>
               </button>
             </form>
 
@@ -1310,18 +1429,34 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                          SKU: {prod.sku} | Barcode: {prod.barcode}
+                          Article: {prod.article || prod.name} | Size: {prod.size || (prod.sku ? prod.sku.split('-').pop() : '42')} | Barcode: {prod.barcode}
                         </p>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <p className="font-bold text-sm text-slate-900 dark:text-white">
-                        {currencySymbol} {formatStockPrice(getProductRetailPrice(prod))}
-                      </p>
-                      <p className={`text-xs ${prod.totalStock <= prod.lowStockLimit ? 'text-amber-600 font-semibold' : 'text-emerald-600'}`}>
-                        In Stock: {prod.totalStock}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProductForCartonPack(prod);
+                          setSearchResults([]);
+                        }}
+                        className="px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-bold border border-purple-300 dark:border-purple-700 flex items-center gap-1.5 transition cursor-pointer"
+                        title="Select Carton Pack and Dynamic Quantity Multipliers"
+                      >
+                        <Boxes className="w-3.5 h-3.5" />
+                        <span>Carton Pack</span>
+                      </button>
+
+                      <div className="text-right">
+                        <p className="font-bold text-sm text-slate-900 dark:text-white">
+                          {currencySymbol} {formatStockPrice(getProductRetailPrice(prod))}
+                        </p>
+                        <p className={`text-xs ${prod.totalStock <= prod.lowStockLimit ? 'text-amber-600 font-semibold' : 'text-emerald-600'}`}>
+                          In Stock: {prod.totalStock}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1436,7 +1571,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
               </div>
               <h3 className="font-bold text-slate-800 dark:text-white text-base">POS Cart is Empty</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1 leading-relaxed">
-                Scan shoes using a physical Barcode Scanner or type SKU/Article in the top input to begin checkout.
+                Scan shoes using a physical Barcode Scanner or type Article number in the top input to begin checkout.
               </p>
               <div className="mt-5 flex flex-wrap gap-2 justify-center text-[11px]">
                 <span className="bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full font-mono font-semibold shadow-2xs">
@@ -1449,7 +1584,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   F4: Shoe Exchange
                 </span>
                 <span className="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-1 rounded-full font-mono font-semibold shadow-2xs">
-                  Enter: Rapid Add SKU
+                  Enter: Add Item
                 </span>
                 <span className="bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 px-3 py-1 rounded-full font-mono font-semibold shadow-2xs">
                   F8: Delete Sale
@@ -1485,7 +1620,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           <span className="font-bold text-sm text-slate-900 dark:text-white line-through opacity-85">{retItem.productName}</span>
                         </div>
                         <div className="text-[11px] text-amber-800 dark:text-amber-400 font-mono mt-0.5">
-                          Inv: #{activeExchange.originalInvoiceNumber} • SKU: {retItem.sku}
+                          Inv: #{activeExchange.originalInvoiceNumber}
                         </div>
                       </td>
                       <td className="py-2.5 px-3 text-center font-mono font-bold text-amber-900 dark:text-amber-300">
@@ -1564,9 +1699,15 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           }`}>
                             {isItemFixed ? 'Fixed' : 'Negotiable'}
                           </span>
+                          {item.cartons !== undefined && item.cartons > 0 && (
+                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold font-mono bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 flex items-center gap-1">
+                              <Boxes className="w-2.5 h-2.5" />
+                              <span>{item.cartons} ctn ({item.packName || `${item.pairsPerCarton || 12} prs/ctn`})</span>
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                          SKU: {item.sku} | Barcode: {item.barcode}
+                          Article: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.article || item.name}</strong> | Size: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.size || (item.sku ? item.sku.split('-').pop() : '42')}</strong> | Barcode: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.barcode}</strong>
                         </div>
 
                         {/* Visual Warning: Price below configured minimum profit margin */}
@@ -2249,6 +2390,21 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         }}
         currencySymbol={currencySymbol}
       />
+
+      {/* POS ITEM SELECTION MODULE (DYNAMIC CARTON PACK MULTIPLIER CHIPS) */}
+      {selectedProductForCartonPack && (
+        <PosItemSelection
+          isOpen={Boolean(selectedProductForCartonPack)}
+          product={selectedProductForCartonPack}
+          cartonPacks={cartonPacksList}
+          currencySymbol={currencySymbol}
+          onClose={() => {
+            setSelectedProductForCartonPack(null);
+            focusScannerInput();
+          }}
+          onAddToCart={handleAddCartonPackToCart}
+        />
+      )}
     </div>
   );
 };

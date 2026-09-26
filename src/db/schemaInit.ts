@@ -188,6 +188,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS products_barcode_idx ON products(barcode);
     CREATE INDEX IF NOT EXISTS products_sku_idx ON products(sku);
+    CREATE INDEX IF NOT EXISTS products_article_idx ON products(article);
     CREATE INDEX IF NOT EXISTS products_active_idx ON products(active);
 
     CREATE TABLE IF NOT EXISTS customers (
@@ -359,6 +360,31 @@ export async function ensureDatabaseSchema(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS stock_movements_product_idx ON stock_movements(product_id);
     CREATE INDEX IF NOT EXISTS stock_movements_created_at_idx ON stock_movements(created_at);
+
+    CREATE TABLE IF NOT EXISTS carton_packs (
+      id SERIAL PRIMARY KEY,
+      pack_name TEXT NOT NULL,
+      pairs_per_carton INTEGER NOT NULL,
+      is_default BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    -- Seed standard carton packing configurations if table is freshly created
+    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
+    SELECT 'Half Carton (6 Pairs)', 6, false
+    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Half Carton (6 Pairs)');
+
+    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
+    SELECT 'Standard Carton (12 Pairs)', 12, true
+    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Standard Carton (12 Pairs)');
+
+    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
+    SELECT 'Wholesale Pack (24 Pairs)', 24, false
+    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Wholesale Pack (24 Pairs)');
+
+    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
+    SELECT 'Master Carton (36 Pairs)', 36, false
+    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Master Carton (36 Pairs)');
   `);
 }
 
@@ -373,6 +399,7 @@ export async function dropAllTables(): Promise<void> {
   // 1. Explicitly drop all known application tables with CASCADE
   await pgClient.exec(`
     DROP TABLE IF EXISTS 
+      carton_packs,
       password_reset_tokens,
       stock_movements,
       return_items,

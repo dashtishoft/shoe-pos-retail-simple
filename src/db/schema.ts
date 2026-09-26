@@ -85,6 +85,7 @@ export const products = pgTable('products', {
   return {
     barcodeIdx: uniqueIndex('products_barcode_idx').on(table.barcode),
     skuIdx: uniqueIndex('products_sku_idx').on(table.sku),
+    articleIdx: index('products_article_idx').on(table.article),
     activeIdx: index('products_active_idx').on(table.active),
     brandIdx: index('products_brand_idx').on(table.brand),
     categoryIdx: index('products_category_idx').on(table.category),
@@ -288,3 +289,12 @@ export const salesRelations = relations(sales, ({ one, many }) => ({
   user: one(users, { fields: [sales.createdBy], references: [users.id] }),
   items: many(saleItems),
 }));
+
+// Carton Packs configuration table (id, pack_name, pairs_per_carton, is_default)
+export const cartonPacks = pgTable('carton_packs', {
+  id: serial('id').primaryKey(),
+  packName: text('pack_name').notNull(),
+  pairsPerCarton: integer('pairs_per_carton').notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

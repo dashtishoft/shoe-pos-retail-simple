@@ -738,7 +738,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       !forceResetArticle && isArticleManuallyEdited && article.trim()
         ? article.trim().toUpperCase()
         : generateSuggestedArticle(catPfx, pId);
-    const designedSku = generateSku(brandPfx, designedArticle, pId);
+    const designedSku = generateSku(brandPfx, designedArticle, '42');
 
     setArticle(designedArticle);
     setSku(designedSku);
@@ -1572,19 +1572,16 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 </div>
 
                 {/* Auto-Assigned Standard Codes Summary */}
-                {(article || sku) && (
+                {article && (
                   <div className="p-3 bg-slate-100/80 dark:bg-[#070B14] border border-slate-200 dark:border-[#1A263D] rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-2">
                       <Tag className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-                      <span className="text-gray-600 dark:text-slate-400 font-medium">Standard Codes:</span>
+                      <span className="text-gray-600 dark:text-slate-400 font-medium">Standard Code:</span>
                       <span className="font-mono font-bold text-gray-900 dark:text-white bg-white dark:bg-[#131B2E] px-2 py-0.5 rounded border border-gray-200 dark:border-[#1A263D]">
                         Article: {article || '---'}
                       </span>
-                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60">
-                        SKU: {sku || '---'}
-                      </span>
                     </div>
-                    <span className="text-[10px] text-gray-500 dark:text-slate-400">Auto-generated from classification</span>
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400">SKU generated automatically in background</span>
                   </div>
                 )}
               </div>

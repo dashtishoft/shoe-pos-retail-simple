@@ -197,6 +197,7 @@ export const api = {
   // POS
   pos: {
     checkout: (body: any) => request<any>('/pos/checkout', { method: 'POST', body: JSON.stringify(body) }),
+    getCartonPacks: () => request<{ cartonPacks: any[] }>('/pos/carton-packs'),
     listSales: (params?: { search?: string; limit?: number }) => {
       const q = new URLSearchParams();
       if (params?.search) q.set('search', params.search);
@@ -204,6 +205,10 @@ export const api = {
       return request<{ sales: any[] }>(`/pos/sales?${q.toString()}`);
     },
     getSale: (id: number) => request<any>(`/pos/sales/${id}`),
+  },
+
+  cartonPacks: {
+    list: () => request<{ cartonPacks: any[] }>('/pos/carton-packs'),
   },
 
   // Purchases

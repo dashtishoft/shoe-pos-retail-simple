@@ -309,6 +309,10 @@ async function ensureProductAndSettingsColumns() {
       await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
     }
     if (reg.rows[0]?.has_products) {
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS size VARCHAR(30) DEFAULT '42'");
+      await pgClient.query("CREATE INDEX IF NOT EXISTS products_sku_idx ON products(sku)");
+      await pgClient.query("CREATE INDEX IF NOT EXISTS products_article_idx ON products(article)");
+      await pgClient.query("CREATE INDEX IF NOT EXISTS products_barcode_idx ON products(barcode)");
       await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS margin_type VARCHAR(30) NOT NULL DEFAULT 'FIXED'");
       await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_calculation_method VARCHAR(30) NOT NULL DEFAULT 'FIXED_AMOUNT'");
       await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC(5, 2) DEFAULT 30.00");
@@ -391,7 +395,7 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
     const barcode = req.params.barcode.trim();
     const [result, settings] = await Promise.all([
       pgClient.query(
-        `SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, 
+        `SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, COALESCE(p.size, '42') as size,
                 p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
                 p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
                 p.custom_min_margin, p.custom_max_margin,
@@ -437,6 +441,7 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
       categoryName: row.category || 'Casual Shoes',
       sku: row.sku,
       article: row.article || '',
+      size: row.size || '42',
       barcode: row.barcode,
       primaryImageUrl: row.primary_image_url,
       description: row.description,
@@ -471,7 +476,7 @@ router.get('/', requireAuth, async (req, res: Response) => {
     const { search, brand, category, brandId, categoryId, lowStockOnly, limit } = req.query;
 
     let query = `
-      SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, 
+      SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, COALESCE(p.size, '42') as size,
              p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
              p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
              p.custom_min_margin, p.custom_max_margin,
@@ -541,6 +546,7 @@ router.get('/', requireAuth, async (req, res: Response) => {
         categoryName: row.category || 'Casual Shoes',
         sku: row.sku,
         article: row.article || '',
+        size: row.size || '42',
         barcode: row.barcode,
         primaryImageUrl: row.primary_image_url,
         description: row.description,
@@ -617,6 +623,7 @@ router.get('/:id', requireAuth, async (req, res: Response) => {
         categoryName: row.category || 'Casual Shoes',
         sku: row.sku,
         article: row.article || '',
+        size: row.size || '42',
         barcode: row.barcode,
         primaryImageUrl: row.primary_image_url,
         description: row.description,
@@ -759,14 +766,23 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       return res.status(400).json({ error: 'Product ID limit of 99,999 reached for 5-digit barcode generation.' });
     }
 
-    const finalSku = sku && sku.trim()
-      ? sku.trim().toUpperCase()
-      : generateSku(brandPrefix, cleanArticle, predictedId);
+    // Size / variant handling (e.g., '42', '40', '41', etc.)
+    const rawSize = req.body.size || req.body.sizeVariant || req.body.variant || '42';
+    const cleanSize = String(rawSize).trim().toUpperCase();
 
-    // Check SKU uniqueness
+    // Automated SKU Backend Handling:
+    // Format: ${brandCode}-${articleNumber}-${size} (e.g., DAF-SF-0012-42)
+    const autoSku = generateSku(brandPrefix, cleanArticle, cleanSize);
+    let finalSku = (sku && sku.trim()) ? sku.trim().toUpperCase() : autoSku;
+
+    // Check SKU uniqueness; if auto-generated collision occurs, append product ID for safe isolation
     const skuCheck = await pgClient.query('SELECT id FROM products WHERE LOWER(sku) = LOWER($1)', [finalSku]);
     if (skuCheck.rows.length > 0) {
-      return res.status(400).json({ error: `A product with SKU "${finalSku}" already exists.` });
+      if (!sku || !sku.trim()) {
+        finalSku = `${brandPrefix}-${cleanArticle}-${cleanSize}-${predictedId}`;
+      } else {
+        return res.status(400).json({ error: `A product with SKU "${finalSku}" already exists.` });
+      }
     }
 
     // Get company prefix from settings (strictly 7 digits)
@@ -819,11 +835,11 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
     try {
       const productRes = await pgClient.query<{ id: number }>(
         `INSERT INTO products (
-          name, brand, category, sku, article, barcode, primary_image_url, 
+          name, brand, category, sku, article, size, barcode, primary_image_url, 
           description, cost_price, margin_type, profit_calculation_method, profit_margin, profit_amount,
           custom_min_margin, custom_max_margin,
           sale_price, min_sale_price, max_sale_price, total_stock, low_stock_limit, active
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, true)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, true)
         RETURNING id`,
         [
           cleanName,
@@ -831,6 +847,7 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
           finalCategory,
           finalSku,
           cleanArticle,
+          cleanSize,
           finalBarcode,
           primaryImageUrl || '',
           description || '',

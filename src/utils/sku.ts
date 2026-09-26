@@ -133,24 +133,27 @@ export function generateSuggestedArticle(
 }
 
 /**
- * Generates the full automatic SKU: [Brand Prefix]-[Article]-[Product ID]
+ * Generates the automated SKU: [Brand Prefix]-[Article Number]-[Size/Variant]
+ * Format: ${brandCode}-${articleNumber}-${size} (e.g., DAF-SF-0012-42)
  */
 export function generateSku(
-  brandPrefix: string | undefined | null,
+  brandPrefixOrName: string | undefined | null,
   article: string | undefined | null,
-  productId: number | string | undefined | null
+  sizeOrVariant?: number | string | null
 ): string {
-  const prefix = (brandPrefix || 'GEN').toUpperCase().trim();
-  const cleanArticle = (article || '').toUpperCase().trim();
-  const id = parseInt(String(productId ?? '').replace(/\D/g, ''), 10) || 1;
+  const brandCode = parseBrandPrefix(brandPrefixOrName);
+  const articleNumber = (article || 'SF-0001').toUpperCase().trim();
+  const rawSize = sizeOrVariant !== undefined && sizeOrVariant !== null ? String(sizeOrVariant).trim().toUpperCase() : '';
+  const size = rawSize || '42';
 
-  return `${prefix}-${cleanArticle}-${id}`;
+  return `${brandCode}-${articleNumber}-${size}`;
 }
 
 export interface SkuComponents {
   brandPrefix: string;
   categoryPrefix?: string;
   article: string;
+  size: string;
   productId: number;
   sku: string;
   formula: string;
@@ -159,50 +162,63 @@ export interface SkuComponents {
 /**
  * Helper to build all components together.
  * Supports:
- * - buildSkuInfo(brandName, categoryName, articleInput, productIdInput)
- * - backwards compatibility: buildSkuInfo(brandName, articleInput, productIdInput)
+ * - buildSkuInfo(brandName, categoryName, articleInput, sizeOrProductIdInput)
  */
 export function buildSkuInfo(
   brandName: string | undefined | null,
   categoryOrArticle: string | undefined | null,
-  articleOrProductId?: number | string | null,
-  productIdInput?: number | string | undefined | null
+  articleOrSize?: number | string | null,
+  sizeOrProductIdInput?: number | string | undefined | null
 ): SkuComponents {
   const brandPrefix = parseBrandPrefix(brandName);
 
   let categoryPrefix = 'CA';
   let article = '';
+  let size = '42';
   let productId = 1;
 
-  if (productIdInput !== undefined && productIdInput !== null) {
+  if (sizeOrProductIdInput !== undefined && sizeOrProductIdInput !== null) {
     categoryPrefix = parseCategoryPrefix(categoryOrArticle);
-    productId = parseInt(String(productIdInput ?? '').replace(/\D/g, ''), 10) || 1;
-    const artInput = typeof articleOrProductId === 'string' ? articleOrProductId : '';
+    const rawVal = String(sizeOrProductIdInput).trim();
+    if (/^\d{1,2}$/.test(rawVal)) {
+      size = rawVal;
+    } else {
+      productId = parseInt(rawVal.replace(/\D/g, ''), 10) || 1;
+    }
+    const artInput = typeof articleOrSize === 'string' ? articleOrSize : '';
     article = artInput && artInput.trim()
       ? artInput.trim().toUpperCase()
       : generateSuggestedArticle(categoryPrefix, productId);
   } else if (
-    typeof articleOrProductId === 'number' ||
-    (typeof articleOrProductId === 'string' && /^\d+$/.test(articleOrProductId.trim()))
+    typeof articleOrSize === 'number' ||
+    (typeof articleOrSize === 'string' && /^\d+$/.test(articleOrSize.trim()))
   ) {
     categoryPrefix = parseCategoryPrefix(categoryOrArticle);
-    productId = parseInt(String(articleOrProductId).replace(/\D/g, ''), 10) || 1;
+    const num = parseInt(String(articleOrSize).replace(/\D/g, ''), 10) || 1;
+    if (num >= 20 && num <= 50) {
+      size = String(num);
+    } else {
+      productId = num;
+    }
     article = generateSuggestedArticle(categoryPrefix, productId);
   } else {
-    productId = parseInt(String(articleOrProductId ?? '').replace(/\D/g, ''), 10) || 1;
     article = categoryOrArticle && categoryOrArticle.trim()
       ? categoryOrArticle.trim().toUpperCase()
-      : generateSuggestedArticle('CA', productId);
+      : generateSuggestedArticle('CA', 1);
+    if (typeof articleOrSize === 'string' && articleOrSize.trim()) {
+      size = articleOrSize.trim().toUpperCase();
+    }
   }
 
-  const sku = generateSku(brandPrefix, article, productId);
+  const sku = generateSku(brandPrefix, article, size);
 
   return {
     brandPrefix,
     categoryPrefix,
     article,
+    size,
     productId,
     sku,
-    formula: `[${brandPrefix}]-[${article}]-[${productId}]`,
+    formula: `[${brandPrefix}]-[${article}]-[${size}]`,
   };
 }

@@ -313,6 +313,7 @@ async function setupFrontendAndListen() {
           middlewareMode: true,
           hmr: isHmrDisabled ? false : undefined,
           watch: isHmrDisabled ? null : undefined,
+          allowedHosts: true,
         },
         appType: 'spa',
       });

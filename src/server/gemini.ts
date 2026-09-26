@@ -450,6 +450,9 @@ export async function analyzeProductImageWithGemini(
 
   const prompt = `You are an AI assistant specialized exclusively in retail footwear inventory analysis. Your task is to analyze user-uploaded shoe images and output a Brand Name, Category, and Title.
 
+Operational & POS Search Context:
+In this shoe retail POS and inventory management system, retail sales staff search items primarily using Barcode scanning or Article numbers (e.g. SF-0012). SKU codes follow an automated format (\${brandCode}-\${articleNumber}-\${size}, e.g. DAF-SF-0012-42) and are handled automatically in the background without requiring manual input or SKU searches from staff.
+
 Core Rules & Guardrails
 Strict Shoe Validation:
 

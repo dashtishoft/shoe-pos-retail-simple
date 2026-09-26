@@ -386,3 +386,29 @@ export interface ApiToken {
   createdAt: string;
   lastUsedAt?: string | null;
 }
+
+// Carton Packing Configuration
+export interface CartonPack {
+  id: number;
+  pack_name: string;
+  packName?: string;
+  pairs_per_carton: number;
+  pairsPerCarton?: number;
+  is_default?: boolean;
+  isDefault?: boolean;
+}
+
+// Payload expected when adding an item from the POS item selection module
+export interface PosAddToCartPayload {
+  productId: number;
+  cartonPackId: number;
+  cartons: number;
+  totalPairs: number;
+  totalPrice: number;
+  unitPrice?: number;
+  pricePerCarton?: number;
+  packName?: string;
+  pairsPerCarton?: number;
+  product?: any;
+}
+
