@@ -108,8 +108,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'pos', label: 'POS Terminal', icon: ShoppingCart, shortcut: 'F1' },
         { id: 'inventory', label: 'Shoe Catalog', icon: Boxes, shortcut: 'F2' },
-        { id: 'brands', label: 'Brands', icon: Tag },
-        { id: 'categories', label: 'Categories', icon: Layers },
         { id: 'ledger', label: 'Stock Ledger', icon: BookOpen },
       ],
     },
@@ -135,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
-        if (isCashier && (item.id === 'purchases' || item.id === 'brands' || item.id === 'categories')) {
+        if (isCashier && item.id === 'purchases') {
           return false;
         }
         return true;

@@ -30,13 +30,17 @@ import { StatCard, triggerStatRecount } from '../common/StatCard.tsx';
 interface ProductManagementProps {
   currentUser: any;
   companySettings: any;
-  initialBrandId?: number | '';
-  initialCategoryId?: number | '';
+  initialBrand?: string;
+  initialCategory?: string;
+  initialBrandId?: string | number | '';
+  initialCategoryId?: string | number | '';
 }
 
 export const ProductManagement: React.FC<ProductManagementProps> = ({
   currentUser,
   companySettings,
+  initialBrand,
+  initialCategory,
   initialBrandId,
   initialCategoryId,
 }) => {
@@ -48,8 +52,10 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
   const [categories, setCategories] = useState<any[]>([]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState<number | ''>(initialBrandId || '');
-  const [selectedCategory, setSelectedCategory] = useState<number | ''>(initialCategoryId || '');
+  const initialBrandStr = initialBrand || (typeof initialBrandId === 'string' ? initialBrandId : '') || '';
+  const initialCatStr = initialCategory || (typeof initialCategoryId === 'string' ? initialCategoryId : '') || '';
+  const [selectedBrand, setSelectedBrand] = useState<string>(initialBrandStr);
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCatStr);
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -125,13 +131,17 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
   }, [selectedBrand, selectedCategory, lowStockFilter]);
 
   useEffect(() => {
-    if (initialBrandId !== undefined) {
-      setSelectedBrand(initialBrandId || '');
+    if (initialBrand !== undefined) {
+      setSelectedBrand(initialBrand || '');
+    } else if (initialBrandId !== undefined) {
+      setSelectedBrand(String(initialBrandId || ''));
     }
-    if (initialCategoryId !== undefined) {
-      setSelectedCategory(initialCategoryId || '');
+    if (initialCategory !== undefined) {
+      setSelectedCategory(initialCategory || '');
+    } else if (initialCategoryId !== undefined) {
+      setSelectedCategory(String(initialCategoryId || ''));
     }
-  }, [initialBrandId, initialCategoryId]);
+  }, [initialBrand, initialCategory, initialBrandId, initialCategoryId]);
 
   const loadFilterData = async () => {
     try {
@@ -155,8 +165,8 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
     try {
       const res = await api.products.list({
         search: searchTerm.trim() || undefined,
-        brandId: selectedBrand || undefined,
-        categoryId: selectedCategory || undefined,
+        brand: selectedBrand || undefined,
+        category: selectedCategory || undefined,
         lowStockOnly: lowStockFilter || undefined,
       });
       setProducts(res.products || []);
@@ -332,15 +342,16 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
 
         <select
           value={selectedBrand}
-          onChange={(e) => setSelectedBrand(e.target.value ? Number(e.target.value) : '')}
+          onChange={(e) => setSelectedBrand(e.target.value)}
           className="px-3.5 py-2.5 bg-slate-50 dark:bg-purple-500/20 border border-slate-200 dark:border-purple-400/40 text-slate-800 dark:text-purple-200 hover:bg-slate-100 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] rounded-xl outline-none font-medium focus:border-blue-500 dark:focus:border-purple-400 cursor-pointer transition"
         >
           <option value="">All Brands</option>
           {brands.map((b) => {
-            const isLocal = b.name?.trim().toLowerCase() === 'local';
+            const bName = typeof b === 'string' ? b : b.name;
+            const isLocal = bName?.trim().toLowerCase() === 'local';
             return (
-              <option key={b.id} value={b.id} className="dark:bg-[#120726] dark:text-purple-100">
-                {b.name} {isLocal ? '(Default)' : ''}
+              <option key={bName} value={bName} className="dark:bg-[#120726] dark:text-purple-100">
+                {bName} {isLocal ? '(Default)' : ''}
               </option>
             );
           })}
@@ -348,15 +359,18 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
 
         <select
           value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : '')}
+          onChange={(e) => setSelectedCategory(e.target.value)}
           className="px-3.5 py-2.5 bg-slate-50 dark:bg-purple-500/20 border border-slate-200 dark:border-purple-400/40 text-slate-800 dark:text-purple-200 hover:bg-slate-100 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] rounded-xl outline-none font-medium focus:border-blue-500 dark:focus:border-purple-400 cursor-pointer transition"
         >
           <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id} className="dark:bg-[#120726] dark:text-purple-100">
-              {c.name}
-            </option>
-          ))}
+          {categories.map((c) => {
+            const cName = typeof c === 'string' ? c : c.name;
+            return (
+              <option key={cName} value={cName} className="dark:bg-[#120726] dark:text-purple-100">
+                {cName}
+              </option>
+            );
+          })}
         </select>
 
         <button

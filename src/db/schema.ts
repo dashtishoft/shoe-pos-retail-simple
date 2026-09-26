@@ -55,27 +55,12 @@ export const companySettings = pgTable('company_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-// Brands
-export const brands = pgTable('brands', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  logo: text('logo').default(''),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-// Categories
-export const categories = pgTable('categories', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  lowStockLimit: integer('low_stock_limit'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
 // Products (1 Product = 1 SKU = 1 Barcode = Total Stock)
+// Brand and Category are stored directly as plain text string fields
 export const products = pgTable('products', {
   id: serial('id').primaryKey(),
-  brandId: integer('brand_id').references(() => brands.id, { onDelete: 'set null' }),
-  categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  brand: text('brand').default('Local').notNull(),
+  category: text('category').default('Casual Shoes').notNull(),
   sku: text('sku').notNull().unique(),
   article: text('article').notNull(),
   barcode: text('barcode').notNull().unique(),
@@ -101,6 +86,8 @@ export const products = pgTable('products', {
     barcodeIdx: uniqueIndex('products_barcode_idx').on(table.barcode),
     skuIdx: uniqueIndex('products_sku_idx').on(table.sku),
     activeIdx: index('products_active_idx').on(table.active),
+    brandIdx: index('products_brand_idx').on(table.brand),
+    categoryIdx: index('products_category_idx').on(table.category),
   };
 });
 
@@ -292,9 +279,7 @@ export const stockMovements = pgTable('stock_movements', {
 });
 
 // Relations
-export const productsRelations = relations(products, ({ one, many }) => ({
-  brand: one(brands, { fields: [products.brandId], references: [brands.id] }),
-  category: one(categories, { fields: [products.categoryId], references: [categories.id] }),
+export const productsRelations = relations(products, ({ many }) => ({
   stockMovements: many(stockMovements),
 }));
 

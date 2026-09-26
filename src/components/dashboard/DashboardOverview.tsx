@@ -533,10 +533,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </h2>
             <button
               type="button"
-              onClick={() => onNavigate('brands')}
+              onClick={() => onNavigate('inventory')}
               className="text-xs font-bold text-blue-600 dark:text-cyan-400 hover:underline cursor-pointer"
             >
-              Manage Brands
+              View Catalog
             </button>
           </div>
 

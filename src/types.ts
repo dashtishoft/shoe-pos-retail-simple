@@ -63,21 +63,16 @@ export interface CompanySettings {
 }
 
 export interface Brand {
-  id: number;
   name: string;
   logo?: string;
   product_count?: number;
   total_units?: number;
-  createdAt: string;
 }
 
 export interface Category {
-  id: number;
   name: string;
-  lowStockLimit?: number;
   product_count?: number;
   total_units?: number;
-  createdAt: string;
 }
 
 export interface ProductSize {
@@ -100,18 +95,12 @@ export type AiConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface AiBrandSuggestion {
   suggestedName: string;
-  matchedId: number | null;
-  matchedName: string | null;
-  isExisting: boolean;
   confidence: AiConfidenceLevel;
   isUnknown: boolean;
 }
 
 export interface AiCategorySuggestion {
   suggestedName: string;
-  matchedId: number | null;
-  matchedName: string | null;
-  isExisting: boolean;
   confidence: AiConfidenceLevel;
 }
 
@@ -131,10 +120,10 @@ export interface Product {
   id: number;
   article: string;
   name?: string;
-  brandId: number | null;
+  brand: string;
   brandName?: string;
   brandLogo?: string;
-  categoryId: number | null;
+  category: string;
   categoryName?: string;
   sku: string;
   barcode: string;

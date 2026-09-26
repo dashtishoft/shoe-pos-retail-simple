@@ -11,8 +11,6 @@ import { SalesReturnView } from './components/returns/SalesReturnView.tsx';
 import { CustomerManagement } from './components/customers/CustomerManagement.tsx';
 import { ReportsDashboard } from './components/reports/ReportsDashboard.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
-import { BrandManagement } from './components/brands/BrandManagement.tsx';
-import { CategoryManagement } from './components/categories/CategoryManagement.tsx';
 import { SupplierManagement } from './components/suppliers/SupplierManagement.tsx';
 import { DashboardOverview } from './components/dashboard/DashboardOverview.tsx';
 import { AuthModal } from './components/auth/AuthModal.tsx';
@@ -85,8 +83,6 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [catalogBrandFilter, setCatalogBrandFilter] = useState<number | undefined>(undefined);
-  const [catalogCategoryFilter, setCatalogCategoryFilter] = useState<number | undefined>(undefined);
   const [selectedSupplierForPurchase, setSelectedSupplierForPurchase] = useState<{ id?: number; name?: string } | null>(null);
 
   const handleTabChange = (targetTab: string) => {
@@ -625,32 +621,6 @@ export default function App() {
                     <ProductManagement
                       currentUser={currentUser}
                       companySettings={companySettings}
-                      initialBrandId={catalogBrandFilter}
-                      initialCategoryId={catalogCategoryFilter}
-                    />
-                  )}
-
-                  {currentTab === 'brands' && (
-                    <BrandManagement
-                      currentUser={currentUser}
-                      companySettings={companySettings}
-                      onNavigateToInventory={(brandId) => {
-                        setCatalogBrandFilter(brandId);
-                        setCatalogCategoryFilter(undefined);
-                        handleTabChange('inventory');
-                      }}
-                    />
-                  )}
-
-                  {currentTab === 'categories' && (
-                    <CategoryManagement
-                      currentUser={currentUser}
-                      companySettings={companySettings}
-                      onNavigateToInventory={(categoryId) => {
-                        setCatalogBrandFilter(undefined);
-                        setCatalogCategoryFilter(categoryId);
-                        handleTabChange('inventory');
-                      }}
                     />
                   )}
 

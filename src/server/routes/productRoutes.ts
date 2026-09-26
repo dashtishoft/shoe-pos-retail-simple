@@ -153,26 +153,13 @@ router.get('/next-id', requireAuth, async (_req: AuthenticatedRequest, res: Resp
 });
 
 // Calculate Brand Prefix, Category Prefix, Suggested Article & SKU API
-// Query params: ?brandId=1&brandName=Nike&categoryId=2&categoryName=Shoes&article=SH-0001&productId=1
+// Query params: ?brand=Nike&category=Shoes&article=SH-0001&productId=1
 router.get('/suggest-sku', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { brandId, brandName, categoryId, categoryName, article, productId } = req.query;
+    const { brand, brandId, brandName, category, categoryId, categoryName, article, productId } = req.query;
 
-    let targetBrandName = brandName ? String(brandName) : '';
-    if (!targetBrandName && brandId) {
-      const bRes = await pgClient.query<{ name: string }>('SELECT name FROM brands WHERE id = $1', [Number(brandId)]);
-      if (bRes.rows.length > 0) {
-        targetBrandName = bRes.rows[0].name;
-      }
-    }
-
-    let targetCategoryName = categoryName ? String(categoryName) : '';
-    if (!targetCategoryName && categoryId) {
-      const cRes = await pgClient.query<{ name: string }>('SELECT name FROM categories WHERE id = $1', [Number(categoryId)]);
-      if (cRes.rows.length > 0) {
-        targetCategoryName = cRes.rows[0].name;
-      }
-    }
+    const targetBrandName = String(brand || brandName || brandId || '').trim();
+    const targetCategoryName = String(category || categoryName || categoryId || '').trim();
 
     let targetProductId = productId ? parseInt(String(productId).replace(/\D/g, ''), 10) : 0;
     if (!targetProductId || isNaN(targetProductId)) {
@@ -267,10 +254,14 @@ router.post('/ai-suggest', requireAuth, async (req: AuthenticatedRequest, res: R
       return res.status(400).json({ error: 'Please upload or provide a product image to analyze.' });
     }
 
-    // Retrieve current list of existing brands and categories from database
+    // Retrieve current list of existing brands and categories from database products
     const [brandsRes, categoriesRes] = await Promise.all([
-      pgClient.query<{ id: number; name: string }>('SELECT id, name FROM brands ORDER BY name ASC'),
-      pgClient.query<{ id: number; name: string }>('SELECT id, name FROM categories ORDER BY name ASC'),
+      pgClient.query<{ name: string }>(
+        "SELECT DISTINCT brand as name FROM products WHERE brand IS NOT NULL AND TRIM(brand) != '' ORDER BY brand ASC"
+      ),
+      pgClient.query<{ name: string }>(
+        "SELECT DISTINCT category as name FROM products WHERE category IS NOT NULL AND TRIM(category) != '' ORDER BY category ASC"
+      ),
     ]);
 
     const result = await analyzeProductImageWithGemini(
@@ -400,16 +391,13 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
     const barcode = req.params.barcode.trim();
     const [result, settings] = await Promise.all([
       pgClient.query(
-        `SELECT p.id, p.name, p.brand_id, b.name as brand_name, COALESCE(b.logo, '') as brand_logo,
-                p.category_id, c.name as category_name, p.sku, p.article, p.barcode, 
+        `SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, 
                 p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
                 p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
                 p.custom_min_margin, p.custom_max_margin,
                 p.sale_price, p.min_sale_price, p.max_sale_price,
-                p.total_stock, COALESCE(c.low_stock_limit, p.low_stock_limit, 5) as low_stock_limit, p.active
+                p.total_stock, COALESCE(p.low_stock_limit, 5) as low_stock_limit, p.active
          FROM products p
-         LEFT JOIN brands b ON p.brand_id = b.id
-         LEFT JOIN categories c ON p.category_id = c.id
          WHERE (p.barcode = $1 OR LOWER(p.sku) = LOWER($1) OR LOWER(COALESCE(p.article, '')) = LOWER($1)) AND p.active = true
          LIMIT 1`,
         [barcode]
@@ -442,11 +430,11 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
     const product = {
       id: row.id,
       name: row.name,
-      brandId: row.brand_id,
-      brandName: row.brand_name || 'Unbranded',
-      brandLogo: row.brand_logo || '',
-      categoryId: row.category_id,
-      categoryName: row.category_name || 'Uncategorized',
+      brand: row.brand || 'Local',
+      brandName: row.brand || 'Local',
+      brandLogo: '',
+      category: row.category || 'Casual Shoes',
+      categoryName: row.category || 'Casual Shoes',
       sku: row.sku,
       article: row.article || '',
       barcode: row.barcode,
@@ -480,40 +468,39 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
 router.get('/', requireAuth, async (req, res: Response) => {
   try {
     await ensureProductAndSettingsColumns();
-    const { search, brandId, categoryId, lowStockOnly, limit } = req.query;
+    const { search, brand, category, brandId, categoryId, lowStockOnly, limit } = req.query;
 
     let query = `
-      SELECT p.id, p.name, p.brand_id, b.name as brand_name, COALESCE(b.logo, '') as brand_logo,
-             p.category_id, c.name as category_name, p.sku, p.article, p.barcode, 
+      SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, 
              p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
              p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
              p.custom_min_margin, p.custom_max_margin,
              p.sale_price, p.min_sale_price, p.max_sale_price,
-             p.total_stock, COALESCE(c.low_stock_limit, p.low_stock_limit, 5) as low_stock_limit, p.active, p.created_at, p.updated_at
+             p.total_stock, COALESCE(p.low_stock_limit, 5) as low_stock_limit, p.active, p.created_at, p.updated_at
       FROM products p
-      LEFT JOIN brands b ON p.brand_id = b.id
-      LEFT JOIN categories c ON p.category_id = c.id
       WHERE 1=1
     `;
     const params: any[] = [];
 
     if (search && typeof search === 'string') {
       params.push(`%${search.trim().toLowerCase()}%`);
-      query += ` AND (LOWER(COALESCE(p.article, '')) LIKE $${params.length} OR LOWER(p.sku) LIKE $${params.length} OR p.barcode LIKE $${params.length} OR LOWER(p.name) LIKE $${params.length})`;
+      query += ` AND (LOWER(COALESCE(p.article, '')) LIKE $${params.length} OR LOWER(p.sku) LIKE $${params.length} OR p.barcode LIKE $${params.length} OR LOWER(p.name) LIKE $${params.length} OR LOWER(p.brand) LIKE $${params.length} OR LOWER(p.category) LIKE $${params.length})`;
     }
 
-    if (brandId && !isNaN(Number(brandId))) {
-      params.push(Number(brandId));
-      query += ` AND p.brand_id = $${params.length}`;
+    const brandFilter = (brand || brandId) ? String(brand || brandId).trim() : '';
+    if (brandFilter) {
+      params.push(brandFilter.toLowerCase());
+      query += ` AND LOWER(p.brand) = $${params.length}`;
     }
 
-    if (categoryId && !isNaN(Number(categoryId))) {
-      params.push(Number(categoryId));
-      query += ` AND p.category_id = $${params.length}`;
+    const catFilter = (category || categoryId) ? String(category || categoryId).trim() : '';
+    if (catFilter) {
+      params.push(catFilter.toLowerCase());
+      query += ` AND LOWER(p.category) = $${params.length}`;
     }
 
     if (lowStockOnly === 'true') {
-      query += ` AND p.total_stock <= COALESCE(c.low_stock_limit, p.low_stock_limit, 5)`;
+      query += ` AND p.total_stock <= COALESCE(p.low_stock_limit, 5)`;
     }
 
     query += ` ORDER BY p.id DESC`;
@@ -547,11 +534,11 @@ router.get('/', requireAuth, async (req, res: Response) => {
       return {
         id: row.id,
         name: row.name,
-        brandId: row.brand_id,
-        brandName: row.brand_name || 'Unbranded',
-        brandLogo: row.brand_logo || '',
-        categoryId: row.category_id,
-        categoryName: row.category_name || 'Uncategorized',
+        brand: row.brand || 'Local',
+        brandName: row.brand || 'Local',
+        brandLogo: '',
+        category: row.category || 'Casual Shoes',
+        categoryName: row.category || 'Casual Shoes',
         sku: row.sku,
         article: row.article || '',
         barcode: row.barcode,
@@ -590,10 +577,8 @@ router.get('/:id', requireAuth, async (req, res: Response) => {
     const id = parseInt(req.params.id, 10);
     const [result, settings] = await Promise.all([
       pgClient.query(
-        `SELECT p.*, COALESCE(p.cost_price, 0) as cost_price, b.name as brand_name, c.name as category_name
+        `SELECT p.*, COALESCE(p.cost_price, 0) as cost_price
          FROM products p
-         LEFT JOIN brands b ON p.brand_id = b.id
-         LEFT JOIN categories c ON p.category_id = c.id
          WHERE p.id = $1`,
         [id]
       ),
@@ -625,10 +610,11 @@ router.get('/:id', requireAuth, async (req, res: Response) => {
       product: {
         id: row.id,
         name: row.name,
-        brandId: row.brand_id,
-        brandName: row.brand_name || 'Unbranded',
-        categoryId: row.category_id,
-        categoryName: row.category_name || 'Uncategorized',
+        brand: row.brand || 'Local',
+        brandName: row.brand || 'Local',
+        brandLogo: '',
+        category: row.category || 'Casual Shoes',
+        categoryName: row.category || 'Casual Shoes',
         sku: row.sku,
         article: row.article || '',
         barcode: row.barcode,
@@ -664,6 +650,10 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
   try {
     const {
       name,
+      brand,
+      category,
+      brandName,
+      categoryName,
       brandId,
       categoryId,
       article,
@@ -758,13 +748,10 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       finalSalePrice = parsedMax;
     }
 
-    // Lookup brand name for automatic brand prefix parsing
-    let brandName = '';
-    if (brandId) {
-      const bRes = await pgClient.query<{ name: string }>('SELECT name FROM brands WHERE id = $1', [parseInt(brandId, 10)]);
-      brandName = bRes.rows[0]?.name || '';
-    }
-    const brandPrefix = parseBrandPrefix(brandName);
+    // Brand and Category strings
+    const finalBrand = (brand || brandName || (typeof brandId === 'string' ? brandId : '') || '').trim() || 'Local';
+    const finalCategory = (category || categoryName || (typeof categoryId === 'string' ? categoryId : '') || '').trim() || 'Casual Shoes';
+    const brandPrefix = parseBrandPrefix(finalBrand);
 
     // Get next product ID (auto-incrementing, non-reusable integer from PostgreSQL)
     const predictedId = await getNextProductId();
@@ -817,42 +804,14 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
 
     const physicalStock = parseInt(String(totalStock ?? initialStock ?? 0), 10) || 0;
 
-    // Category is optional - do not auto-create or force any category
-    const parsedCatId = categoryId ? parseInt(String(categoryId), 10) : null;
-    const finalCategoryId = parsedCatId && !isNaN(parsedCatId) ? parsedCatId : null;
-
-    // Default brand to 'Local' if omitted or null
-    let finalBrandId = brandId ? parseInt(String(brandId), 10) : null;
-    if (!finalBrandId || isNaN(finalBrandId)) {
-      const localBrand = await pgClient.query<{ id: number }>(
-        "SELECT id FROM brands WHERE LOWER(name) = 'local' LIMIT 1"
-      );
-      if (localBrand.rows.length > 0) {
-        finalBrandId = localBrand.rows[0].id;
-      } else {
-        const ins = await pgClient.query<{ id: number }>(
-          "INSERT INTO brands (name) VALUES ('Local') ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id"
-        );
-        finalBrandId = ins.rows[0]?.id || null;
-      }
-    }
-
-    // Calculate low stock limit: Product specific -> Category limit -> Company settings (default 5)
+    // Calculate low stock limit
     let finalLowStockLimit: number = 5;
     if (lowStockLimit !== undefined && lowStockLimit !== null && lowStockLimit !== '') {
       const parsed = parseInt(String(lowStockLimit), 10);
       if (!isNaN(parsed) && parsed > 0) finalLowStockLimit = parsed;
-    } else if (finalCategoryId) {
-      const catLimitRes = await pgClient.query<{ low_stock_limit: number | null }>(
-        'SELECT low_stock_limit FROM categories WHERE id = $1',
-        [finalCategoryId]
-      );
-      if (catLimitRes.rows[0]?.low_stock_limit) {
-        finalLowStockLimit = catLimitRes.rows[0].low_stock_limit;
-      } else {
-        const setRes = await pgClient.query<{ low_stock_limit: number }>('SELECT low_stock_limit FROM company_settings LIMIT 1');
-        finalLowStockLimit = setRes.rows[0]?.low_stock_limit || 5;
-      }
+    } else {
+      const setRes = await pgClient.query<{ low_stock_limit: number }>('SELECT low_stock_limit FROM company_settings LIMIT 1');
+      finalLowStockLimit = setRes.rows[0]?.low_stock_limit || 5;
     }
 
     // ATOMIC TRANSACTION: Create product with single cost_price and initial stock movement
@@ -860,7 +819,7 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
     try {
       const productRes = await pgClient.query<{ id: number }>(
         `INSERT INTO products (
-          name, brand_id, category_id, sku, article, barcode, primary_image_url, 
+          name, brand, category, sku, article, barcode, primary_image_url, 
           description, cost_price, margin_type, profit_calculation_method, profit_margin, profit_amount,
           custom_min_margin, custom_max_margin,
           sale_price, min_sale_price, max_sale_price, total_stock, low_stock_limit, active
@@ -868,8 +827,8 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
         RETURNING id`,
         [
           cleanName,
-          finalBrandId,
-          finalCategoryId,
+          finalBrand,
+          finalCategory,
           finalSku,
           cleanArticle,
           finalBarcode,
@@ -936,6 +895,10 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
     const id = parseInt(req.params.id, 10);
     const {
       name,
+      brand,
+      category,
+      brandName,
+      categoryName,
       brandId,
       categoryId,
       article,
@@ -973,6 +936,13 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
       return res.status(404).json({ error: 'Product not found.' });
     }
     const current: any = currentRes.rows[0];
+
+    const finalBrand = brand !== undefined
+      ? (String(brand).trim() || 'Local')
+      : (brandName !== undefined ? (String(brandName).trim() || 'Local') : (current.brand || 'Local'));
+    const finalCategory = category !== undefined
+      ? (String(category).trim() || 'Casual Shoes')
+      : (categoryName !== undefined ? (String(categoryName).trim() || 'Casual Shoes') : (current.category || 'Casual Shoes'));
 
     if (article !== undefined && !article.trim()) {
       return res.status(400).json({ error: 'Article is a mandatory field.' });
@@ -1084,7 +1054,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
 
     await pgClient.query(
       `UPDATE products SET 
-        name = $1, brand_id = $2, category_id = $3, sku = $4, article = $5, barcode = $6,
+        name = $1, brand = $2, category = $3, sku = $4, article = $5, barcode = $6,
         primary_image_url = $7, description = $8, cost_price = $9, total_stock = $10,
         low_stock_limit = $11, active = $12, margin_type = $13, custom_min_margin = $14,
         custom_max_margin = $15, sale_price = $16, min_sale_price = $17, max_sale_price = $18,
@@ -1093,8 +1063,8 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
       WHERE id = $22`,
       [
         finalName,
-        brandId !== undefined ? (brandId ? parseInt(brandId, 10) : null) : current.brand_id,
-        categoryId !== undefined ? (categoryId ? parseInt(categoryId, 10) : null) : current.category_id,
+        finalBrand,
+        finalCategory,
         sku ? sku.trim().toUpperCase() : current.sku,
         finalArticle,
         finalBarcode,

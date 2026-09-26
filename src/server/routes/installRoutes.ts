@@ -246,17 +246,10 @@ export const DEFAULT_SEED_BRANDS = [
 ];
 
 export async function seedDefaultTaxonomy(): Promise<{ categoriesCount: number; brandsCount: number }> {
-  for (const b of DEFAULT_SEED_BRANDS) {
-    await pgClient.query('INSERT INTO brands (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [b]);
-  }
-  for (const c of DEFAULT_SEED_CATEGORIES) {
-    await pgClient.query('INSERT INTO categories (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [c]);
-  }
-  const cRes = await pgClient.query('SELECT count(*)::int as count FROM categories');
-  const bRes = await pgClient.query('SELECT count(*)::int as count FROM brands');
+  // Brands and categories are stored directly as plain text string fields in products
   return {
-    categoriesCount: cRes.rows[0]?.count || 0,
-    brandsCount: bRes.rows[0]?.count || 0,
+    categoriesCount: 0,
+    brandsCount: 0,
   };
 }
 
@@ -1095,8 +1088,8 @@ router.post('/load-dummy-data', async (req: Request, res: Response) => {
     const prodCount = await pgClient.query('SELECT COUNT(*) as c FROM products').catch(() => ({ rows: [{ c: '0' }] }));
     const retCount = await pgClient.query('SELECT COUNT(*) as c FROM returns').catch(() => ({ rows: [{ c: '0' }] }));
     const custCount = await pgClient.query('SELECT COUNT(*) as c FROM customers').catch(() => ({ rows: [{ c: '0' }] }));
-    const brandCount = await pgClient.query('SELECT COUNT(*) as c FROM brands').catch(() => ({ rows: [{ c: '0' }] }));
-    const catCount = await pgClient.query('SELECT COUNT(*) as c FROM categories').catch(() => ({ rows: [{ c: '0' }] }));
+    const brandCount = await pgClient.query("SELECT COUNT(DISTINCT brand) as c FROM products WHERE brand IS NOT NULL AND TRIM(brand) != ''").catch(() => ({ rows: [{ c: '0' }] }));
+    const catCount = await pgClient.query("SELECT COUNT(DISTINCT category) as c FROM products WHERE category IS NOT NULL AND TRIM(category) != ''").catch(() => ({ rows: [{ c: '0' }] }));
 
     // Generate login token for the dummy store owner
     let token = '';

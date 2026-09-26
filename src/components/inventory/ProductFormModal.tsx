@@ -80,8 +80,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   onSuccess,
 }) => {
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
-  const [brands, setBrands] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [liveSettings, setLiveSettings] = useState<any>(companySettings);
 
   useEffect(() => {
@@ -97,9 +97,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const prefixValidation = validateBarcodePrefix(rawPrefix);
   const prefix = String(rawPrefix).replace(/\D/g, '');
 
-  // Step 1: Product Classification State
-  const [brandId, setBrandId] = useState<number | ''>(product?.brandId || '');
-  const [categoryId, setCategoryId] = useState<number | ''>(product?.categoryId || '');
+  // Step 1: Product Classification State (Stored directly as plain text string fields)
+  const [brand, setBrand] = useState<string>(product?.brand || product?.brandName || 'Local');
+  const [category, setCategory] = useState<string>(product?.category || product?.categoryName || 'Casual Shoes');
   const [nextProductId, setNextProductId] = useState<number>(product?.id || 1);
   const effectiveProductId = product?.id || nextProductId;
 
@@ -718,45 +718,43 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   // Derived current brand and category details
-  const localBrand = brands.find((b) => b.name?.trim().toLowerCase() === 'local');
-  const selectedBrand = brands.find((b) => b.id === brandId) || localBrand;
-  const currentBrandName = selectedBrand?.name || product?.brandName || 'Local';
+  const currentBrandName = brand.trim() || 'Local';
   const currentBrandPrefix = parseBrandPrefix(currentBrandName);
 
-  const selectedCategory = categories.find((c) => c.id === categoryId);
-  const currentCategoryName = selectedCategory?.name || product?.categoryName || '';
-  const currentCategoryPrefix = currentCategoryName ? parseCategoryPrefix(currentCategoryName) : '';
+  const currentCategoryName = category.trim() || 'Casual Shoes';
+  const currentCategoryPrefix = parseCategoryPrefix(currentCategoryName);
 
-  // Helper to recompute article and SKU based on classification (respects manual article edit if set)
+  // Helper to recompute article and SKU based on classification
   const updateClassificationCodes = (
-    bId: number | '',
-    cId: number | '',
-    pId: number,
-    bList = brands,
-    cList = categories,
+    targetBrand = brand,
+    targetCat = category,
+    pId = effectiveProductId,
     forceResetArticle = false
   ) => {
-    const chosenBrand = bList.find((b) => b.id === bId) || bList.find((b) => b.name?.trim().toLowerCase() === 'local');
-    const chosenCat = cList.find((c: any) => c.id === cId);
-    const brandPfx = parseBrandPrefix(chosenBrand?.name || 'Local');
+    const brandPfx = parseBrandPrefix(targetBrand || 'Local');
+    const catPfx = parseCategoryPrefix(targetCat || 'Casual Shoes');
 
-    if (chosenCat) {
-      const catPfx = parseCategoryPrefix(chosenCat.name);
-      const designedArticle =
-        !forceResetArticle && isArticleManuallyEdited && article.trim()
-          ? article.trim().toUpperCase()
-          : generateSuggestedArticle(catPfx, pId);
-      const designedSku = generateSku(brandPfx, designedArticle, pId);
+    const designedArticle =
+      !forceResetArticle && isArticleManuallyEdited && article.trim()
+        ? article.trim().toUpperCase()
+        : generateSuggestedArticle(catPfx, pId);
+    const designedSku = generateSku(brandPfx, designedArticle, pId);
 
-      setArticle(designedArticle);
-      setSku(designedSku);
-      if (!productName || productName.toUpperCase() === article.toUpperCase()) {
-        setProductName(designedArticle);
-      }
-    } else if (!isArticleManuallyEdited || forceResetArticle) {
-      setArticle('');
-      setSku('');
+    setArticle(designedArticle);
+    setSku(designedSku);
+    if (!productName || productName.toUpperCase() === article.toUpperCase()) {
+      setProductName(designedArticle);
     }
+  };
+
+  const handleBrandChange = (newBrand: string) => {
+    setBrand(newBrand);
+    updateClassificationCodes(newBrand, category, effectiveProductId);
+  };
+
+  const handleCategoryChange = (newCat: string) => {
+    setCategory(newCat);
+    updateClassificationCodes(brand, newCat, effectiveProductId);
   };
 
   const handleArticleChange = (rawVal: string) => {
@@ -819,51 +817,25 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           }
         }
 
-        // Fetch brands and categories
-        const [bRes, cRes] = await Promise.all([
-          api.brandCategory.getBrands(),
-          api.brandCategory.getCategories(),
-        ]);
-        let brandList = bRes.brands || [];
-        const catList = cRes.categories || [];
+        // Fetch existing distinct brands and categories from database products for autocomplete suggestions
+        try {
+          const [bRes, cRes] = await Promise.all([
+            api.brandCategory.getBrands(),
+            api.brandCategory.getCategories(),
+          ]);
+          const brandList = (bRes?.brands || []).map((b: any) => (typeof b === 'string' ? b : b.name)).filter(Boolean);
+          const catList = (cRes?.categories || []).map((c: any) => (typeof c === 'string' ? c : c.name)).filter(Boolean);
 
-        // Ensure 'Local' brand exists in the list
-        let foundLocalBrand = brandList.find((b: any) => b.name?.trim().toLowerCase() === 'local');
-        if (!foundLocalBrand) {
-          try {
-            const createRes = await api.brandCategory.createBrand('Local');
-            if (createRes?.brand) {
-              brandList = [createRes.brand, ...brandList];
-              foundLocalBrand = createRes.brand;
-            }
-          } catch (e) {
-            console.warn('Could not auto-create Local brand:', e);
+          if (isMounted) {
+            setBrands(brandList);
+            setCategories(catList);
           }
-        }
-
-        if (isMounted) {
-          setBrands(brandList);
-          setCategories(catList);
-        }
-
-        let activeBrandId = brandId;
-        if (!activeBrandId && brandList.length > 0) {
-          // Default to 'Local' brand per requirement
-          const localBrand = foundLocalBrand || brandList.find((b: any) => b.name?.trim().toLowerCase() === 'local');
-          activeBrandId = localBrand ? localBrand.id : brandList[0].id;
-          if (isMounted) setBrandId(activeBrandId);
-        }
-
-        // Category is required and should NOT default to 'Local'!
-        // Keep categoryId as set by product or empty if creating new product
-        let activeCategoryId = categoryId;
-        if (product?.categoryId) {
-          activeCategoryId = product.categoryId;
-          if (isMounted) setCategoryId(activeCategoryId);
+        } catch (e) {
+          console.warn('Could not load brand/category suggestions:', e);
         }
 
         if (!product && isMounted) {
-          updateClassificationCodes(activeBrandId, activeCategoryId, currentId, brandList, catList);
+          updateClassificationCodes(brand || 'Local', category || 'Casual Shoes', currentId);
 
           // Pre-fill the barcode input with the designed store standard EAN-13 barcode
           try {
@@ -971,33 +943,6 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     return () => clearTimeout(timer);
   }, [barcode, prefix, product?.id]);
 
-  const handleBrandSelect = (newBrandId: number | '') => {
-    setBrandId(newBrandId);
-    if (!product) {
-      updateClassificationCodes(newBrandId, categoryId, effectiveProductId);
-    } else {
-      const chosenBrand = brands.find((b) => b.id === newBrandId);
-      const brandPfx = parseBrandPrefix(chosenBrand?.name || '');
-      setSku(generateSku(brandPfx, article, effectiveProductId));
-    }
-  };
-
-  const handleCategorySelect = (newCategoryId: number | '') => {
-    setCategoryId(newCategoryId);
-    if (!product) {
-      updateClassificationCodes(brandId, newCategoryId, effectiveProductId);
-    } else {
-      const chosenCat = categories.find((c) => c.id === newCategoryId);
-      const catPfx = parseCategoryPrefix(chosenCat?.name || '');
-      const designedArticle =
-        isArticleManuallyEdited && article.trim()
-          ? article.trim().toUpperCase()
-          : generateSuggestedArticle(catPfx, effectiveProductId);
-      setArticle(designedArticle);
-      setSku(generateSku(currentBrandPrefix, designedArticle, effectiveProductId));
-    }
-  };
-
   const handleGenerateStoreBarcode = async () => {
     try {
       setErrorMessage(null);
@@ -1028,21 +973,13 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   // STEP VALIDATION
   const validateStep1 = (): boolean => {
     setErrorMessage(null);
-    let effectiveBrandId = brandId;
-    if (!effectiveBrandId) {
-      const localBrand = brands.find((b) => b.name?.trim().toLowerCase() === 'local');
-      effectiveBrandId = localBrand ? localBrand.id : (brands[0]?.id || '');
-      if (effectiveBrandId) {
-        setBrandId(effectiveBrandId);
-      }
-    }
-    if (!effectiveBrandId) {
-      setErrorMessage('Please select a Brand / Manufacturer to classify the product.');
+    if (!brand || !brand.trim()) {
+      setErrorMessage('Please enter or select a Brand / Manufacturer.');
       return false;
     }
 
-    if (!categoryId) {
-      setErrorMessage('Please select a Shoe Category to classify the product.');
+    if (!category || !category.trim()) {
+      setErrorMessage('Please enter or select a Shoe Category.');
       return false;
     }
     if (totalStock === '' || Number(totalStock) < 0) {
@@ -1136,31 +1073,18 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       let cleanArticle = article.trim().toUpperCase();
       let cleanSku = sku.trim().toUpperCase();
 
-      // Ensure category is resolved (defaults to Local)
-      let finalCategoryId = categoryId;
-      if (!finalCategoryId) {
-        const localCat = categories.find((c) => c.name?.trim().toLowerCase() === 'local');
-        finalCategoryId = localCat ? localCat.id : (categories[0]?.id || null);
-      }
-
-      // Ensure brand is resolved (defaults to Local)
-      let finalBrandId = brandId;
-      if (!finalBrandId) {
-        const localBrand = brands.find((b) => b.name?.trim().toLowerCase() === 'local');
-        finalBrandId = localBrand ? localBrand.id : (brands[0]?.id || null);
-      }
+      const finalBrand = brand.trim() || 'Local';
+      const finalCategory = category.trim() || 'Casual Shoes';
 
       // Ensure article is generated if not yet set
       if (!cleanArticle) {
-        const chosenCat = categories.find((c) => c.id === finalCategoryId);
-        const catPfx = parseCategoryPrefix(chosenCat?.name || '');
+        const catPfx = parseCategoryPrefix(finalCategory);
         cleanArticle = generateSuggestedArticle(catPfx, effectiveProductId).toUpperCase();
       }
 
       // Ensure SKU is generated if not yet set
       if (!cleanSku) {
-        const chosenBrand = brands.find((b) => b.id === finalBrandId);
-        const brandPfx = parseBrandPrefix(chosenBrand?.name || '');
+        const brandPfx = parseBrandPrefix(finalBrand);
         cleanSku = generateSku(brandPfx, cleanArticle, effectiveProductId).toUpperCase();
       }
 
@@ -1179,8 +1103,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
       const payload = {
         name: productName.trim() || cleanArticle,
-        brandId: finalBrandId || null,
-        categoryId: finalCategoryId || null,
+        brand: finalBrand,
+        category: finalCategory,
         article: cleanArticle,
         sku: cleanSku,
         barcode: finalBarcodeToSave,
@@ -1432,11 +1356,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 onImageUrlChange={(url) => setPrimaryImageUrl(url)}
                 brands={brands}
                 categories={categories}
-                onSelectBrand={(id) => handleBrandSelect(id)}
-                onSelectCategory={(id) => handleCategorySelect(id)}
+                onSelectBrand={(bName) => handleBrandChange(bName)}
+                onSelectCategory={(cName) => handleCategoryChange(cName)}
                 onSetTitle={(title) => setProductName(title)}
-                onBrandsUpdated={(newBrands) => setBrands(newBrands)}
-                onCategoriesUpdated={(newCats) => setCategories(newCats)}
               />
 
               <div className="bg-white dark:bg-gradient-to-b dark:from-[#131B2E]/90 dark:to-[#0A0E1A]/80 p-5 rounded-2xl border border-gray-200 dark:border-[#1A263D] shadow-xs dark:shadow-[0_0_20px_rgba(59,130,246,0.05)] space-y-4">
@@ -1449,37 +1371,30 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Brand Selector */}
+                  {/* Brand Input with Autocomplete Datalist */}
                   <div>
                     <label className="block font-bold text-gray-800 dark:text-slate-200 text-xs mb-1.5">
                       Brand / Manufacturer <span className="text-red-500 dark:text-pink-400">*</span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <select
-                        value={brandId || localBrand?.id || ''}
-                        onChange={(e) => handleBrandSelect(e.target.value ? Number(e.target.value) : (localBrand?.id || ''))}
-                        className="flex-1 px-3 py-2 bg-white dark:bg-purple-500/20 border border-gray-300 dark:border-purple-400/40 rounded-xl text-xs font-medium text-gray-900 dark:text-purple-200 hover:bg-slate-50 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] outline-none focus:border-indigo-600 dark:focus:border-purple-400 cursor-pointer transition"
-                      >
-                        {!brands.some((b) => b.name?.trim().toLowerCase() === 'local') && (
-                          <option value="" className="dark:bg-[#120726] dark:text-purple-100">Local (Default)</option>
-                        )}
-                        {brands.map((b) => {
-                          const isLocal = b.name?.trim().toLowerCase() === 'local';
-                          return (
-                            <option key={b.id} value={b.id} className="dark:bg-[#120726] dark:text-purple-100">
-                              {b.name} {isLocal ? '(Default)' : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
-                      {(() => {
-                        const curBrand = brands.find((b) => b.id === (brandId || localBrand?.id));
-                        return (
-                          <div title={`Selected Brand: ${curBrand?.name || 'Local'}`} className="shrink-0">
-                            <BrandLogo logo={curBrand?.logo} name={curBrand?.name || 'Local'} size="md" />
-                          </div>
-                        );
-                      })()}
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          list="product-brand-datalist"
+                          value={brand}
+                          onChange={(e) => handleBrandChange(e.target.value)}
+                          placeholder="Type or select brand (e.g. Nike, Adidas, Local)..."
+                          className="w-full px-3 py-2 bg-white dark:bg-purple-500/20 border border-gray-300 dark:border-purple-400/40 rounded-xl text-xs font-medium text-gray-900 dark:text-purple-200 hover:bg-slate-50 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] outline-none focus:border-indigo-600 dark:focus:border-purple-400 transition"
+                        />
+                        <datalist id="product-brand-datalist">
+                          {brands.map((bName) => (
+                            <option key={bName} value={bName} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div title={`Brand: ${currentBrandName}`} className="shrink-0">
+                        <BrandLogo logo="" name={currentBrandName} size="md" />
+                      </div>
                     </div>
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Brand Prefix (3-char):</span>
@@ -1489,23 +1404,26 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Category Selector */}
+                  {/* Category Input with Autocomplete Datalist */}
                   <div>
                     <label className="block font-bold text-gray-800 dark:text-slate-200 text-xs mb-1.5">
                       Shoe Category <span className="text-red-500 dark:text-pink-400">*</span>
                     </label>
-                    <select
-                      value={categoryId}
-                      onChange={(e) => handleCategorySelect(e.target.value ? Number(e.target.value) : '')}
-                      className="w-full px-3 py-2 bg-white dark:bg-purple-500/20 border border-gray-300 dark:border-purple-400/40 rounded-xl text-xs font-medium text-gray-900 dark:text-purple-200 hover:bg-slate-50 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] outline-none focus:border-indigo-600 dark:focus:border-purple-400 cursor-pointer transition"
-                    >
-                      <option value="" className="dark:bg-[#120726] dark:text-purple-100">Select Shoe Category...</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id} className="dark:bg-[#120726] dark:text-purple-100">
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        list="product-category-datalist"
+                        value={category}
+                        onChange={(e) => handleCategoryChange(e.target.value)}
+                        placeholder="Type or select category (e.g. Casual Shoes, Sports Shoes)..."
+                        className="w-full px-3 py-2 bg-white dark:bg-purple-500/20 border border-gray-300 dark:border-purple-400/40 rounded-xl text-xs font-medium text-gray-900 dark:text-purple-200 hover:bg-slate-50 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] outline-none focus:border-indigo-600 dark:focus:border-purple-400 transition"
+                      />
+                      <datalist id="product-category-datalist">
+                        {categories.map((cName) => (
+                          <option key={cName} value={cName} />
+                        ))}
+                      </datalist>
+                    </div>
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <span className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Article Prefix (2-char):</span>
                       <span className="font-mono font-bold text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60">

@@ -100,15 +100,13 @@ router.get('/dashboard', requireAuth, async (_req, res: Response) => {
         p.sku,
         COALESCE(p.total_stock, 0) as stock,
         p.primary_image_url,
-        COALESCE(b.name, 'Unbranded') as brand_name,
-        COALESCE(b.logo, '') as brand_logo,
-        COALESCE(c.name, 'Footwear') as category_name,
+        COALESCE(p.brand, 'Local') as brand_name,
+        '' as brand_logo,
+        COALESCE(p.category, 'Casual Shoes') as category_name,
         SUM(si.quantity)::int as units_sold
       FROM sale_items si
       LEFT JOIN products p ON si.product_id = p.id
-      LEFT JOIN brands b ON p.brand_id = b.id
-      LEFT JOIN categories c ON p.category_id = c.id
-      GROUP BY si.product_id, p.article, si.product_name, p.sku, p.total_stock, p.primary_image_url, b.name, b.logo, c.name
+      GROUP BY si.product_id, p.article, si.product_name, p.sku, p.total_stock, p.primary_image_url, p.brand, p.category
       ORDER BY units_sold DESC
       LIMIT 5
     `);
@@ -123,10 +121,9 @@ router.get('/dashboard', requireAuth, async (_req, res: Response) => {
       `SELECT 
          COUNT(*) as total_products,
          COALESCE(SUM(p.total_stock), 0) as total_stock_units,
-         COUNT(CASE WHEN p.total_stock <= COALESCE(c.low_stock_limit, p.low_stock_limit, 5) AND p.total_stock > 0 THEN 1 END) as low_stock_count,
+         COUNT(CASE WHEN p.total_stock <= COALESCE(p.low_stock_limit, 5) AND p.total_stock > 0 THEN 1 END) as low_stock_count,
          COUNT(CASE WHEN p.total_stock <= 0 THEN 1 END) as out_of_stock_count
        FROM products p
-       LEFT JOIN categories c ON p.category_id = c.id
        WHERE p.active = true`
     );
 
@@ -144,34 +141,31 @@ router.get('/dashboard', requireAuth, async (_req, res: Response) => {
     const lowStockProducts = await pgClient.query(
       `SELECT p.id, COALESCE(p.article, p.name) as article, COALESCE(p.article, p.name) as name, 
               p.sku, p.barcode, p.total_stock, 
-              COALESCE(c.low_stock_limit, p.low_stock_limit, 5) as low_stock_limit, 
+              COALESCE(p.low_stock_limit, 5) as low_stock_limit, 
               p.primary_image_url
        FROM products p
-       LEFT JOIN categories c ON p.category_id = c.id
-       WHERE p.active = true AND p.total_stock <= COALESCE(c.low_stock_limit, p.low_stock_limit, 5)
+       WHERE p.active = true AND p.total_stock <= COALESCE(p.low_stock_limit, 5)
        ORDER BY p.total_stock ASC LIMIT 5`
     );
 
-    // Top Selling Brands with Logos
+    // Top Selling Brands: directly grouped by product.brand text field
     const topBrandsRes = await pgClient.query(`
       SELECT 
-        b.id,
-        b.name,
-        COALESCE(b.logo, '') as logo,
+        p.brand as name,
         COALESCE(SUM(si.quantity), 0)::int as sold_count,
         COALESCE(SUM((si.unit_price * si.quantity) - si.discount), 0)::numeric as sales_volume
-      FROM brands b
-      JOIN products p ON p.brand_id = b.id
+      FROM products p
       JOIN sale_items si ON si.product_id = p.id
-      GROUP BY b.id, b.name, b.logo
+      WHERE p.brand IS NOT NULL AND TRIM(p.brand) != ''
+      GROUP BY p.brand
       ORDER BY sold_count DESC
       LIMIT 4
     `);
 
-    let topBrandsData = topBrandsRes.rows.map((row: any) => ({
-      id: row.id,
+    let topBrandsData = topBrandsRes.rows.map((row: any, idx: number) => ({
+      id: idx + 1,
       name: row.name,
-      logo: row.logo || '',
+      logo: '',
       soldCount: parseInt(row.sold_count, 10) || 0,
       salesVolume: parseFloat(row.sales_volume) || 0,
       percentage: 0,
@@ -189,18 +183,18 @@ router.get('/dashboard', requireAuth, async (_req, res: Response) => {
 
     if (topBrandsData.length === 0) {
       const fallbackBrandsRes = await pgClient.query(`
-        SELECT b.id, b.name, COALESCE(b.logo, '') as logo, COALESCE(SUM(p.total_stock), 0)::int as stock_count
-        FROM brands b
-        JOIN products p ON p.brand_id = b.id AND p.active = true
-        GROUP BY b.id, b.name, b.logo
+        SELECT p.brand as name, COALESCE(SUM(p.total_stock), 0)::int as stock_count
+        FROM products p
+        WHERE p.active = true AND p.brand IS NOT NULL AND TRIM(p.brand) != ''
+        GROUP BY p.brand
         HAVING COALESCE(SUM(p.total_stock), 0) > 0
-        ORDER BY stock_count DESC, b.name ASC
+        ORDER BY stock_count DESC, p.brand ASC
         LIMIT 4
       `);
-      topBrandsData = fallbackBrandsRes.rows.map((row: any) => ({
-        id: row.id,
+      topBrandsData = fallbackBrandsRes.rows.map((row: any, idx: number) => ({
+        id: idx + 1,
         name: row.name,
-        logo: row.logo || '',
+        logo: '',
         soldCount: 0,
         salesVolume: 0,
         percentage: 0,

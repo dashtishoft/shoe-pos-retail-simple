@@ -69,32 +69,11 @@ export async function ensureDatabaseSchema(): Promise<void> {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_margin NUMERIC(5, 2) DEFAULT 30.00;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) DEFAULT 0.00;
 
-    CREATE TABLE IF NOT EXISTS brands (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      logo TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-
-    ALTER TABLE brands ADD COLUMN IF NOT EXISTS logo TEXT DEFAULT '';
-
-    CREATE TABLE IF NOT EXISTS categories (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      low_stock_limit INTEGER DEFAULT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-
-    ALTER TABLE categories ADD COLUMN IF NOT EXISTS low_stock_limit INTEGER DEFAULT NULL;
-
-    -- Ensure default 'Local' brand exists (category table starts completely empty with zero categories)
-    INSERT INTO brands (name) VALUES ('Local') ON CONFLICT (name) DO NOTHING;
-
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      brand_id INTEGER REFERENCES brands(id) ON DELETE SET NULL,
-      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      brand VARCHAR(100) NOT NULL DEFAULT 'Local',
+      category VARCHAR(100) NOT NULL DEFAULT 'Casual Shoes',
       sku TEXT NOT NULL UNIQUE,
       barcode TEXT NOT NULL UNIQUE,
       article TEXT DEFAULT '',
@@ -107,6 +86,45 @@ export async function ensureDatabaseSchema(): Promise<void> {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
+
+    -- Ensure brand and category text columns exist on products
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) DEFAULT 'Local';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Casual Shoes';
+
+    -- Data Migration: Migrate any existing relational brand_id and category_id into plain-text columns
+    DO $$
+    BEGIN
+      -- Migrate brand from brands table if brand_id column exists
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='brand_id') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='brands') THEN
+          UPDATE products p 
+          SET brand = COALESCE((SELECT b.name FROM brands b WHERE b.id = p.brand_id), 'Local')
+          WHERE (p.brand IS NULL OR p.brand = '' OR p.brand = 'Local') AND p.brand_id IS NOT NULL;
+        END IF;
+        ALTER TABLE products DROP COLUMN IF EXISTS brand_id CASCADE;
+      END IF;
+
+      -- Migrate category from categories table if category_id column exists
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='category_id') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='categories') THEN
+          UPDATE products p 
+          SET category = COALESCE((SELECT c.name FROM categories c WHERE c.id = p.category_id), 'Casual Shoes')
+          WHERE (p.category IS NULL OR p.category = '' OR p.category = 'Casual Shoes') AND p.category_id IS NOT NULL;
+        END IF;
+        ALTER TABLE products DROP COLUMN IF EXISTS category_id CASCADE;
+      END IF;
+
+      -- Set sane defaults for any null or empty strings
+      UPDATE products SET brand = 'Local' WHERE brand IS NULL OR TRIM(brand) = '';
+      UPDATE products SET category = 'Casual Shoes' WHERE category IS NULL OR TRIM(category) = '';
+
+      -- Completely remove legacy brands and categories tables
+      DROP TABLE IF EXISTS brands CASCADE;
+      DROP TABLE IF EXISTS categories CASCADE;
+    END $$;
+
+    CREATE INDEX IF NOT EXISTS products_brand_idx ON products(brand);
+    CREATE INDEX IF NOT EXISTS products_category_idx ON products(category);
 
     ALTER TABLE products ADD COLUMN IF NOT EXISTS article TEXT DEFAULT '';
     ALTER TABLE products ADD COLUMN IF NOT EXISTS primary_image_url TEXT DEFAULT '';

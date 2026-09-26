@@ -65,26 +65,11 @@ export async function initAndSeedDb() {
     UPDATE company_settings SET currency_name = 'Pakistani Rupee' WHERE currency_name IS NULL OR currency_name = '';
     UPDATE company_settings SET barcode_prefix = '0108923' WHERE LENGTH(barcode_prefix) != 7 OR barcode_prefix !~ '^[0-9]{7}$';
 
-    CREATE TABLE IF NOT EXISTS brands (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      logo TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-
-    ALTER TABLE brands ADD COLUMN IF NOT EXISTS logo TEXT DEFAULT '';
-
-    CREATE TABLE IF NOT EXISTS categories (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      brand_id INTEGER REFERENCES brands(id) ON DELETE SET NULL,
-      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      brand VARCHAR(100) NOT NULL DEFAULT 'Local',
+      category VARCHAR(100) NOT NULL DEFAULT 'Casual Shoes',
       sku TEXT NOT NULL UNIQUE,
       barcode TEXT NOT NULL UNIQUE,
       primary_image_url TEXT DEFAULT '',
@@ -97,9 +82,39 @@ export async function initAndSeedDb() {
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) DEFAULT 'Local';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Casual Shoes';
+
+    -- Data Migration: Migrate any existing relational brand_id and category_id into plain-text columns
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='brand_id') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='brands') THEN
+          UPDATE products p 
+          SET brand = COALESCE((SELECT b.name FROM brands b WHERE b.id = p.brand_id), 'Local')
+          WHERE (p.brand IS NULL OR p.brand = '' OR p.brand = 'Local') AND p.brand_id IS NOT NULL;
+        END IF;
+        ALTER TABLE products DROP COLUMN IF EXISTS brand_id CASCADE;
+      END IF;
+
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='category_id') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='categories') THEN
+          UPDATE products p 
+          SET category = COALESCE((SELECT c.name FROM categories c WHERE c.id = p.category_id), 'Casual Shoes')
+          WHERE (p.category IS NULL OR p.category = '' OR p.category = 'Casual Shoes') AND p.category_id IS NOT NULL;
+        END IF;
+        ALTER TABLE products DROP COLUMN IF EXISTS category_id CASCADE;
+      END IF;
+
+      DROP TABLE IF EXISTS brands CASCADE;
+      DROP TABLE IF EXISTS categories CASCADE;
+    END $$;
+
     CREATE INDEX IF NOT EXISTS products_barcode_idx ON products(barcode);
     CREATE INDEX IF NOT EXISTS products_sku_idx ON products(sku);
     CREATE INDEX IF NOT EXISTS products_active_idx ON products(active);
+    CREATE INDEX IF NOT EXISTS products_brand_idx ON products(brand);
+    CREATE INDEX IF NOT EXISTS products_category_idx ON products(category);
 
     -- Clean up legacy variant tables (flat product model: 1 Product = 1 SKU = 1 Barcode)
     DROP TABLE IF EXISTS product_sizes CASCADE;
@@ -280,23 +295,7 @@ export async function initAndSeedDb() {
     console.log('Default users seeded: admin@shoepos.com / admin123 and cashier@shoepos.com / cashier123');
   }
 
-  // 3. Seed Brands
-  const brandCount = await pgClient.query<{ count: string }>('SELECT COUNT(*) as count FROM brands');
-  if (parseInt(brandCount.rows[0].count) === 0) {
-    await pgClient.query(`
-      INSERT INTO brands (name) VALUES 
-      ('Local'),
-      ('Unbranded'),
-      ('Nike'),
-      ('Adidas'),
-      ('Bata'),
-      ('Service'),
-      ('Clarks'),
-      ('Hush Puppies'),
-      ('Puma');
-    `);
-    console.log('Default brands seeded.');
-  }
+  // 3. (Brands & categories tables removed - plain text fields on products)
 
   // 3b. Seed Suppliers
   const supplierCount = await pgClient.query<{ count: string }>('SELECT COUNT(*) as count FROM suppliers');
@@ -311,25 +310,6 @@ export async function initAndSeedDb() {
     console.log('Default suppliers seeded.');
   }
 
-  // 4. Seed Categories
-  const categoryCount = await pgClient.query<{ count: string }>('SELECT COUNT(*) as count FROM categories');
-  if (parseInt(categoryCount.rows[0].count) === 0) {
-    await pgClient.query(`
-      INSERT INTO categories (name) VALUES 
-      ('Misc'),
-      ('Formal Dress Shoes'),
-      ('Casual Shoes'),
-      ('Sandals & Chappals'),
-      ('Closed Flats'),
-      ('Flat Sandals'),
-      ('Heeled Sandals'),
-      ('Closed Heels & Pumps'),
-      ('Boys Footwear'),
-      ('Girls Footwear');
-    `);
-    console.log('Default categories seeded.');
-  }
-
   // 5. Seed Sample Customers
   const custCount = await pgClient.query<{ count: string }>('SELECT COUNT(*) as count FROM customers');
   if (parseInt(custCount.rows[0].count) === 0) {
@@ -342,34 +322,24 @@ export async function initAndSeedDb() {
     console.log('Sample customers seeded.');
   }
 
-  // 7. Seed Initial Products
+  // 7. Seed Initial Products with plain text brand and category
   const prodCount = await pgClient.query<{ count: string }>('SELECT COUNT(*) as count FROM products');
   if (parseInt(prodCount.rows[0].count) === 0) {
     const adminUser = await pgClient.query<{ id: number }>('SELECT id FROM users WHERE role = $1 LIMIT 1', ['ADMIN']);
     const adminId = adminUser.rows[0]?.id || 1;
 
-    // Get brand and category IDs
-    const nikeBrand = await pgClient.query<{ id: number }>('SELECT id FROM brands WHERE name = $1', ['Nike']);
-    const adidasBrand = await pgClient.query<{ id: number }>('SELECT id FROM brands WHERE name = $1', ['Adidas']);
-    const clarksBrand = await pgClient.query<{ id: number }>('SELECT id FROM brands WHERE name = $1', ['Clarks']);
-    const bataBrand = await pgClient.query<{ id: number }>('SELECT id FROM brands WHERE name = $1', ['Bata']);
-
-    const sportsCat = await pgClient.query<{ id: number }>('SELECT id FROM categories WHERE name = $1', ['Sports']);
-    const formalCat = await pgClient.query<{ id: number }>('SELECT id FROM categories WHERE name = $1', ['Formal']);
-    const casualCat = await pgClient.query<{ id: number }>('SELECT id FROM categories WHERE name = $1', ['Casual']);
-
     const p1 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
-        name, brand_id, category_id, article, sku, barcode, primary_image_url, 
+        name, brand, category, article, sku, barcode, primary_image_url, 
         description, cost_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Air Zoom Velocity Runner',
-        $1, $2, 'SP-0001', 'NIK-SP-0001-1', '01089230001',
+        'Nike', 'Casual Shoes', 'SP-0001', 'NIK-SP-0001-1', '01089230001',
         'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
         'Breathable mesh running shoes with responsive Zoom air cushioning sole.',
         4200.00, 18, 5, true
       ) RETURNING id;
-    `, [nikeBrand.rows[0]?.id, sportsCat.rows[0]?.id]);
+    `);
 
     const p1Id = p1.rows[0].id;
 
@@ -382,15 +352,15 @@ export async function initAndSeedDb() {
     // Product 2: Formal Oxford
     const p2 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
-        name, brand_id, category_id, article, sku, barcode, primary_image_url, 
+        name, brand, category, article, sku, barcode, primary_image_url, 
         description, cost_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Classic Derby Leather Oxford',
-        $1, $2, 'FO-0002', 'CLA-FO-0002-2', '01089230002',
+        'Clarks', 'Formal Dress Shoes', 'FO-0002', 'CLA-FO-0002-2', '01089230002',
         'Handcrafted genuine full-grain leather dress shoes with Goodyear welted leather sole.',
         5500.00, 12, 4, true
       ) RETURNING id;
-    `, [clarksBrand.rows[0]?.id, formalCat.rows[0]?.id]);
+    `);
     const p2Id = p2.rows[0].id;
 
     await pgClient.query(`
@@ -401,16 +371,16 @@ export async function initAndSeedDb() {
     // Product 3: Casual White Sneaker
     const p3 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
-        name, brand_id, category_id, article, sku, barcode, primary_image_url, 
+        name, brand, category, article, sku, barcode, primary_image_url, 
         description, cost_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Cloudfoam Lifestyle Retro Sneaker',
-        $1, $2, 'CA-0003', 'ADI-CA-0003-3', '01089230003',
+        'Adidas', 'Casual Shoes', 'CA-0003', 'ADI-CA-0003-3', '01089230003',
         'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=600&auto=format&fit=crop&q=80',
         'Minimalist everyday sneakers with cushioned Cloudfoam sockliner for all-day comfort.',
         3100.00, 24, 6, true
       ) RETURNING id;
-    `, [adidasBrand.rows[0]?.id, casualCat.rows[0]?.id]);
+    `);
     const p3Id = p3.rows[0].id;
 
     await pgClient.query(`
@@ -421,16 +391,16 @@ export async function initAndSeedDb() {
     // Product 4: Low stock product to showcase alerts
     const p4 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
-        name, brand_id, category_id, article, sku, barcode, primary_image_url, 
+        name, brand, category, article, sku, barcode, primary_image_url, 
         description, cost_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Bata Power Pro Court Trainer',
-        $1, $2, 'SP-0004', 'BAT-SP-0004-4', '01089230004',
+        'Bata', 'Casual Shoes', 'SP-0004', 'BAT-SP-0004-4', '01089230004',
         'https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=600&auto=format&fit=crop&q=80',
         'Durable court trainers with non-marking rubber outsole.',
         2200.00, 3, 5, true
       ) RETURNING id;
-    `, [bataBrand.rows[0]?.id, sportsCat.rows[0]?.id]);
+    `);
     const p4Id = p4.rows[0].id;
 
     await pgClient.query(`
@@ -442,7 +412,6 @@ export async function initAndSeedDb() {
   }
 
   // 8. Migration: Enforce standard 13-digit EAN-13 Modulo-10 Barcodes across all products
-  // Formula: [7-digit prefix from Settings] + [5-digit Product ID] + [1 Check Digit] = 13 digits
   try {
     const sRes = await pgClient.query<{ barcode_prefix: string }>('SELECT barcode_prefix FROM company_settings LIMIT 1');
     const rawPrefix = sRes.rows[0]?.barcode_prefix;
@@ -468,21 +437,18 @@ export async function initAndSeedDb() {
       SELECT setval('products_id_seq', (SELECT GREATEST(COALESCE(MAX(id), 0), 1) FROM products));
     `);
 
-    const prodsRes = await pgClient.query<{ id: number; name: string; brand_name: string | null; category_name: string | null; sku: string; article: string | null }>(`
-      SELECT p.id, p.name, b.name as brand_name, c.name as category_name, p.sku, p.article
+    const prodsRes = await pgClient.query<{ id: number; name: string; brand: string | null; category: string | null; sku: string; article: string | null }>(`
+      SELECT p.id, p.name, p.brand, p.category, p.sku, p.article
       FROM products p
-      LEFT JOIN brands b ON p.brand_id = b.id
-      LEFT JOIN categories c ON p.category_id = c.id
       ORDER BY p.id ASC
     `);
 
     for (const prod of prodsRes.rows) {
-      const brandPrefix = parseBrandPrefix(prod.brand_name);
-      const catPrefix = parseCategoryPrefix(prod.category_name);
+      const brandPrefix = parseBrandPrefix(prod.brand);
+      const catPrefix = parseCategoryPrefix(prod.category);
       let article = prod.article && prod.article.trim()
         ? prod.article.trim().toUpperCase()
         : '';
-      // If article is missing, or matches the previous 3-character unhyphenated category format, or lacks a hyphen:
       if (!article || /^[A-Z0-9]{3}\d{4,}$/.test(article) || !article.includes('-')) {
         article = generateSuggestedArticle(catPrefix, prod.id);
       }
