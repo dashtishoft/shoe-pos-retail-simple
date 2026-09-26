@@ -1161,50 +1161,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <TrendingUp className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">Pricing Policy</h3>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                    <span>Pricing Policy</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-amber-500" />
+                      Locked
+                    </span>
+                  </h3>
                   <p className="text-xs text-slate-500 dark:text-purple-200/70 mt-0.5 font-normal">
-                    Select your retail pricing rule to calculate barcode tag prices and POS checkout limits
+                    Store pricing rule chosen during initial installation wizard. Default profit margins remain fully editable below.
                   </p>
                 </div>
               </div>
-              <span className={`text-xs font-semibold px-3 py-1 rounded-xl border ${
+              <div className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-xl border shadow-2xs ${
                 formData.pricing_mode === 'FIXED'
-                  ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60'
-                  : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
+                  ? 'bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                  : 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
               }`}>
-                Active Policy: {formData.pricing_mode === 'FIXED' ? 'Fixed Price' : 'Negotiable Price'}
-              </span>
+                <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>Active Policy:</span>
+                <span className="uppercase tracking-wide font-extrabold">
+                  {formData.pricing_mode === 'FIXED' ? '1. Fixed Price' : '2. Negotiable Price'}
+                </span>
+              </div>
             </div>
 
-            {/* TWO TABS BELOW CARD HEADER */}
-            <div className="flex items-center p-1 bg-slate-100 dark:bg-[#0A0F1E] rounded-xl border border-slate-200 dark:border-slate-800 mb-6 max-w-md">
-              <button
-                type="button"
-                id="pricing-policy-tab-fixed"
-                onClick={() => setFormData({ ...formData, pricing_mode: 'FIXED' })}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  formData.pricing_mode === 'FIXED'
-                    ? 'bg-white dark:bg-purple-600 text-purple-700 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Tag className="w-3.5 h-3.5" />
-                <span>1 Fixed Price</span>
-              </button>
-
-              <button
-                type="button"
-                id="pricing-policy-tab-negotiable"
-                onClick={() => setFormData({ ...formData, pricing_mode: 'NEGOTIABLE' })}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  formData.pricing_mode === 'NEGOTIABLE'
-                    ? 'bg-white dark:bg-purple-600 text-purple-700 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span>2 Negotiable Price</span>
-              </button>
+            {/* READ-ONLY LOCKED STATUS BANNER (POLICY TOGGLE BUTTONS REMOVED) */}
+            <div className="mb-6 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-[#0A0F1E] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200/70 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 shrink-0 shadow-2xs">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Current Operational Policy:
+                    </span>
+                    <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg border uppercase tracking-wider ${
+                      formData.pricing_mode === 'FIXED'
+                        ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                        : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700'
+                    }`}>
+                      {formData.pricing_mode === 'FIXED' ? 'Fixed Price Policy' : 'Negotiable Price Policy'}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 font-mono">
+                      (Read-Only)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                    The pricing policy is locked to ensure sales ledger, profit reporting, and barcode integrity. It was chosen during the initial Installation Wizard. You can update your default profit margins and amounts below.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* TAB 1 CONTENT: FIXED PRICING (PERCENTAGE + FIXED AMOUNT PROFIT MARGIN) */}

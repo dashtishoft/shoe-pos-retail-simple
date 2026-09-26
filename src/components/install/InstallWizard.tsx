@@ -29,6 +29,8 @@ import {
   Check,
   Sun,
   Moon,
+  Tag,
+  Sliders,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext.tsx';
 import { api, setAuthToken } from '../../services/api.ts';
@@ -112,6 +114,7 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
     'Exchanges accepted within 7 days with original sales receipt. Thank you for shopping with us!'
   );
   const [lowStockLimit, setLowStockLimit] = useState(5);
+  const [pricingMode, setPricingMode] = useState<'FIXED' | 'NEGOTIABLE'>('NEGOTIABLE');
   const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
 
   // Track if installer was unlocked or reset to strictly discard any cached settings
@@ -349,6 +352,7 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
         barcode_prefix: barcodePrefix,
         invoice_footer: invoiceFooter,
         low_stock_limit: lowStockLimit,
+        pricing_mode: pricingMode,
       });
       setCurrentStep(4);
     } catch (err: any) {
@@ -1277,6 +1281,102 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
                         <p className="text-[11px] text-rose-500 mt-1 font-medium">{stepErrors.barcodePrefix}</p>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                {/* Retail Pricing Policy Selection (Permanent Setup Rule) */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3.5 shadow-xs">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-indigo-600" />
+                      <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                        Retail Pricing Policy <span className="text-rose-500">*</span>
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-amber-600" />
+                      Locked After Installation
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-500 font-normal leading-relaxed">
+                    Select your retail pricing rule. This setting is <strong>permanently locked</strong> after initial setup to guarantee transaction audit integrity. Default profit margins and cash amounts can be adjusted later in System Settings.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {/* Option 1: Fixed Price */}
+                    <button
+                      type="button"
+                      onClick={() => setPricingMode('FIXED')}
+                      className={`p-4 rounded-xl text-left transition-all border cursor-pointer relative ${
+                        pricingMode === 'FIXED'
+                          ? 'bg-purple-50/90 border-purple-500 shadow-sm ring-2 ring-purple-400/30'
+                          : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-lg ${
+                            pricingMode === 'FIXED' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            <Tag className="w-4 h-4" />
+                          </div>
+                          <span className={`text-xs font-bold ${
+                            pricingMode === 'FIXED' ? 'text-purple-950 font-black' : 'text-slate-800'
+                          }`}>
+                            1. Fixed Price Mode
+                          </span>
+                        </div>
+                        {pricingMode === 'FIXED' && (
+                          <span className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center text-[10px]">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11.5px] text-slate-600 leading-snug">
+                        Single non-negotiable retail price. Calculated strictly as <strong>Cost Price + Default Profit Margin (%) or Flat Amount ({currencySymbol})</strong>. No bargaining at POS counter.
+                      </p>
+                      <div className="mt-2 text-[10px] font-mono text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded inline-block">
+                        Best for: Brand stores, fixed retail &amp; boutiques
+                      </div>
+                    </button>
+
+                    {/* Option 2: Negotiable Price */}
+                    <button
+                      type="button"
+                      onClick={() => setPricingMode('NEGOTIABLE')}
+                      className={`p-4 rounded-xl text-left transition-all border cursor-pointer relative ${
+                        pricingMode === 'NEGOTIABLE'
+                          ? 'bg-indigo-50/90 border-indigo-500 shadow-sm ring-2 ring-indigo-400/30'
+                          : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-lg ${
+                            pricingMode === 'NEGOTIABLE' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            <Sliders className="w-4 h-4" />
+                          </div>
+                          <span className={`text-xs font-bold ${
+                            pricingMode === 'NEGOTIABLE' ? 'text-indigo-950 font-black' : 'text-slate-800'
+                          }`}>
+                            2. Negotiable Price Mode
+                          </span>
+                        </div>
+                        {pricingMode === 'NEGOTIABLE' && (
+                          <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11.5px] text-slate-600 leading-snug">
+                        Two price levels: <strong>Minimum Floor Limit</strong> (Cost + Min Margin) &amp; <strong>Sticker Tag MRP</strong> (Cost + Max Margin). Cashiers negotiate within limits at POS checkout.
+                      </p>
+                      <div className="mt-2 text-[10px] font-mono text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded inline-block">
+                        Best for: Wholesale &amp; traditional shoe markets
+                      </div>
+                    </button>
                   </div>
                 </div>
               </div>

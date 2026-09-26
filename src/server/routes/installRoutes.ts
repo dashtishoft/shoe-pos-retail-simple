@@ -374,6 +374,12 @@ router.post('/settings', async (req: Request, res: Response) => {
       });
     }
 
+    // Ensure pricing_mode column exists
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'NEGOTIABLE'");
+
+    const rawPricingMode = String(req.body.pricing_mode || req.body.pricingMode || 'NEGOTIABLE').toUpperCase();
+    const finalPricingMode = rawPricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE';
+
     const existingSettings = await pgClient.query<any>('SELECT id FROM company_settings LIMIT 1');
     if (existingSettings.rows.length > 0) {
       await pgClient.query(
@@ -394,8 +400,9 @@ router.post('/settings', async (req: Request, res: Response) => {
           barcode_prefix = $14,
           invoice_footer = $15,
           low_stock_limit = $16,
+          pricing_mode = $17,
           updated_at = NOW()
-        WHERE id = $17`,
+        WHERE id = $18`,
         [
           shop_name.trim(),
           shop_phone.trim(),
@@ -413,6 +420,7 @@ router.post('/settings', async (req: Request, res: Response) => {
           sanitizedBarcode,
           invoice_footer.trim(),
           parseInt(String(low_stock_limit), 10) || 5,
+          finalPricingMode,
           existingSettings.rows[0].id,
         ]
       );
@@ -422,8 +430,8 @@ router.post('/settings', async (req: Request, res: Response) => {
           name, phone, email, address, website, tax_id, strn, logo,
           currency, currency_symbol, currency_name,
           invoice_prefix, purchase_prefix, barcode_prefix,
-          invoice_footer, low_stock_limit, is_installed
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, false)`,
+          invoice_footer, low_stock_limit, pricing_mode, is_installed
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, false)`,
         [
           shop_name.trim(),
           shop_phone.trim(),
@@ -441,6 +449,7 @@ router.post('/settings', async (req: Request, res: Response) => {
           sanitizedBarcode,
           invoice_footer.trim(),
           parseInt(String(low_stock_limit), 10) || 5,
+          finalPricingMode,
         ]
       );
     }

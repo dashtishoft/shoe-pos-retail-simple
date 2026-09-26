@@ -174,8 +174,16 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
     const fixedProfitAmount = rawFixedAmount !== undefined && rawFixedAmount !== null && rawFixedAmount !== ''
       ? Math.max(0, parseFloat(rawFixedAmount) || 0)
       : 0;
-    const rawPricingMode = String(req.body.pricing_mode || req.body.pricingMode || 'NEGOTIABLE').toUpperCase();
-    const pricingMode = rawPricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE';
+    // Retrieve current settings to lock Pricing Policy if already installed
+    const currentSettingsRes = await pgClient.query<{ is_installed: boolean; pricing_mode: string }>(
+      'SELECT is_installed, pricing_mode FROM company_settings LIMIT 1'
+    );
+    const isInstalled = Boolean(currentSettingsRes.rows[0]?.is_installed);
+    let pricingMode = (currentSettingsRes.rows[0]?.pricing_mode || 'NEGOTIABLE').toUpperCase();
+    if (!isInstalled) {
+      const rawPricingMode = String(req.body.pricing_mode || req.body.pricingMode || pricingMode).toUpperCase();
+      pricingMode = rawPricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE';
+    }
     const currencyCode = req.body.currency || 'PKR';
 
     // 1. Validations: Company Profile
