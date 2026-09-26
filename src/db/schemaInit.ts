@@ -120,6 +120,9 @@ export async function ensureDatabaseSchema(): Promise<void> {
     ALTER TABLE products DROP COLUMN IF EXISTS purchase_price;
 
     ALTER TABLE products ADD COLUMN IF NOT EXISTS margin_type TEXT DEFAULT 'FIXED';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_calculation_method TEXT DEFAULT 'FIXED_AMOUNT';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC(5, 2);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_amount NUMERIC(12, 2);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_min_margin NUMERIC(5, 2);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_max_margin NUMERIC(5, 2);
     ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price INTEGER;

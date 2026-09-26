@@ -7,9 +7,30 @@ import type { AuthenticatedRequest } from '../auth.ts';
 
 const router = Router();
 
+let settingsColumnsVerified = false;
+
+async function ensureSettingsPricingColumns() {
+  if (settingsColumnsVerified) return;
+  try {
+    const reg = await pgClient.query<{ has_settings: boolean }>(
+      "SELECT (to_regclass('public.company_settings') IS NOT NULL) as has_settings"
+    );
+    if (!reg.rows[0]?.has_settings) return;
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'NEGOTIABLE'");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_margin NUMERIC(5, 2) NOT NULL DEFAULT 30.00");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    settingsColumnsVerified = true;
+  } catch (err) {
+    console.warn('Could not ensure settings pricing columns:', err);
+  }
+}
+
 // GET /api/settings - Public or Authenticated to get company settings
 router.get('/', async (_req: Request, res: Response) => {
   try {
+    await ensureSettingsPricingColumns();
     const result = await pgClient.query('SELECT * FROM company_settings LIMIT 1');
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Company settings not initialized.' });
@@ -111,6 +132,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // PUT /api/settings - Update Company Settings (Admin Only)
 router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await ensureSettingsPricingColumns();
     const companyName = (req.body.company_name || req.body.companyName || req.body.name || '').trim();
     const companyPhone = (req.body.company_phone || req.body.companyPhone || req.body.phone || '').trim();
     const companyEmail = (req.body.company_email || req.body.companyEmail || req.body.email || '').trim();
@@ -280,6 +302,8 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
         max_profit_margin: parseFloat(s.max_profit_margin ?? '30') || 30,
         maxProfitAmount: parseFloat(s.max_profit_amount ?? '0') || 0,
         max_profit_amount: parseFloat(s.max_profit_amount ?? '0') || 0,
+        isInstalled: Boolean(s.is_installed),
+        is_installed: Boolean(s.is_installed),
         updatedAt: s.updated_at,
       },
     });

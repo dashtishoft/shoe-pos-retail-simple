@@ -350,14 +350,23 @@ export default function App() {
     }
   };
 
-  const handleSettingsUpdated = async () => {
+  const handleSettingsUpdated = async (updatedSettings?: any) => {
     try {
+      if (updatedSettings) {
+        setCompanySettings(updatedSettings);
+        try {
+          localStorage.setItem('cached_company_settings', JSON.stringify(updatedSettings));
+        } catch {}
+      }
       const [settingsRes, statusRes] = await Promise.all([
         api.settings.get().catch(() => null),
         api.install.status().catch(() => null),
       ]);
       if (settingsRes?.settings) {
         setCompanySettings(settingsRes.settings);
+        try {
+          localStorage.setItem('cached_company_settings', JSON.stringify(settingsRes.settings));
+        } catch {}
         const resolvedName =
           settingsRes.settings.name ||
           settingsRes.settings.company_name ||

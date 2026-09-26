@@ -144,6 +144,12 @@ export interface Product {
   cost_price?: number;
   marginType?: 'FIXED' | 'NEGOTIABLE';
   margin_type?: 'FIXED' | 'NEGOTIABLE';
+  profitCalculationMethod?: 'FIXED_AMOUNT' | 'PROFIT_MARGIN';
+  profit_calculation_method?: 'FIXED_AMOUNT' | 'PROFIT_MARGIN';
+  profitMargin?: number | null;
+  profit_margin?: number | null;
+  profitAmount?: number | null;
+  profit_amount?: number | null;
   customMinMargin?: number | null;
   custom_min_margin?: number | null;
   customMaxMargin?: number | null;

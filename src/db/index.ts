@@ -38,6 +38,86 @@ let pgliteClient: PGlite | null = null;
 let drizzleInstance: any;
 let waitReadyPromise: Promise<void>;
 
+const dataDir = path.resolve(process.cwd(), 'data/postgres_db');
+
+function prepareDataDir() {
+  try {
+    if (fs.existsSync(dataDir)) {
+      const hasPgVersion = fs.existsSync(path.join(dataDir, 'PG_VERSION'));
+      const hasConf = fs.existsSync(path.join(dataDir, 'postgresql.conf'));
+      const hasGlobal = fs.existsSync(path.join(dataDir, 'global'));
+      const hasBase = fs.existsSync(path.join(dataDir, 'base'));
+
+      if (!hasPgVersion || !hasConf || !hasGlobal || !hasBase) {
+        console.warn('PostgreSQL data directory is incomplete or corrupted. Recreating clean database cluster...');
+        try {
+          fs.rmSync(dataDir, { recursive: true, force: true });
+        } catch (err) {
+          console.error('Error cleaning up dataDir:', err);
+        }
+      } else {
+        const pidFile = path.join(dataDir, 'postmaster.pid');
+        if (fs.existsSync(pidFile)) {
+          try {
+            fs.unlinkSync(pidFile);
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+  } catch (fsErr: any) {
+    console.warn('Notice: Could not create local data directory:', fsErr.message);
+  }
+}
+
+async function initPgliteSafely(): Promise<void> {
+  isStandardPostgres = false;
+  dbInfo = {
+    type: 'PGlite Embedded',
+    isStandardPostgres: false,
+    host: 'localhost',
+    port: 0,
+    database: dataDir,
+    user: 'local',
+    ssl: false,
+    maskedUrl: `file://${dataDir}`,
+    connected: false,
+  };
+
+  try {
+    prepareDataDir();
+    pgliteClient = new PGlite(dataDir);
+    await pgliteClient.waitReady;
+    await pgliteClient.query('SELECT 1');
+    dbInfo.connected = true;
+    dbInfo.lastError = undefined;
+  } catch (err: any) {
+    console.warn('PGlite directory initialization failed, falling back to clean in-memory database:', err?.message);
+    try {
+      if (fs.existsSync(dataDir)) {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+      }
+    } catch (_) {}
+    try {
+      pgliteClient = new PGlite();
+      await pgliteClient.waitReady;
+      await pgliteClient.query('SELECT 1');
+      dbInfo.connected = true;
+      dbInfo.lastError = undefined;
+    } catch (inMemErr: any) {
+      console.error('PGlite in-memory fallback failed:', inMemErr);
+      dbInfo.connected = false;
+      dbInfo.lastError = inMemErr?.message || String(inMemErr);
+    }
+  }
+  if (pgliteClient) {
+    drizzleInstance = drizzlePglite(pgliteClient, { schema });
+  }
+}
+
 if (rawDatabaseUrl && (rawDatabaseUrl.startsWith('postgres://') || rawDatabaseUrl.startsWith('postgresql://'))) {
   // 1. STANDARD POSTGRESQL SERVER MODE (Neon, AWS RDS, Supabase, Local PostgreSQL, etc.)
   isStandardPostgres = true;
@@ -79,7 +159,7 @@ if (rawDatabaseUrl && (rawDatabaseUrl.startsWith('postgres://') || rawDatabaseUr
     ssl: { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 15000,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
   });
@@ -101,102 +181,18 @@ if (rawDatabaseUrl && (rawDatabaseUrl.startsWith('postgres://') || rawDatabaseUr
     dbInfo.lastError = msg;
   });
 
+  drizzleInstance = drizzlePg(rawPool, { schema });
+
   waitReadyPromise = rawPool.query('SELECT 1').then(() => {
     console.log(`✅ Connected to Standard PostgreSQL Server (${host}:${port}/${database})`);
     dbInfo.connected = true;
     dbInfo.lastError = undefined;
-  }).catch((err) => {
-    console.error('❌ Failed to connect to PostgreSQL server:', err.message);
-    dbInfo.connected = false;
-    dbInfo.lastError = err.message;
-    // Don't throw fatal exception so serverless functions can still return informative health / error JSON
+  }).catch(async (err) => {
+    console.warn('⚠️ External PostgreSQL server unreachable, falling back to embedded PGlite database:', err.message);
+    await initPgliteSafely();
   });
-
-  drizzleInstance = drizzlePg(rawPool, { schema });
 } else {
   // 2. EMBEDDED POSTGRESQL FALLBACK (When no external DATABASE_URL is provided)
-  isStandardPostgres = false;
-  const dataDir = path.resolve(process.cwd(), 'data/postgres_db');
-
-  function prepareDataDir() {
-    try {
-      if (fs.existsSync(dataDir)) {
-        const hasPgVersion = fs.existsSync(path.join(dataDir, 'PG_VERSION'));
-        const hasConf = fs.existsSync(path.join(dataDir, 'postgresql.conf'));
-        const hasGlobal = fs.existsSync(path.join(dataDir, 'global'));
-        const hasBase = fs.existsSync(path.join(dataDir, 'base'));
-
-        if (!hasPgVersion || !hasConf || !hasGlobal || !hasBase) {
-          console.warn('PostgreSQL data directory is incomplete or corrupted. Recreating clean database cluster...');
-          try {
-            fs.rmSync(dataDir, { recursive: true, force: true });
-          } catch (err) {
-            console.error('Error cleaning up dataDir:', err);
-          }
-        } else {
-          const pidFile = path.join(dataDir, 'postmaster.pid');
-          if (fs.existsSync(pidFile)) {
-            try {
-              fs.unlinkSync(pidFile);
-            } catch (_) {}
-          }
-        }
-      }
-
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-    } catch (fsErr: any) {
-      console.warn('Notice: Could not create local data directory:', fsErr.message);
-    }
-  }
-
-  prepareDataDir();
-
-  dbInfo = {
-    type: 'PGlite Embedded',
-    isStandardPostgres: false,
-    host: 'localhost',
-    port: 0,
-    database: dataDir,
-    user: 'local',
-    ssl: false,
-    maskedUrl: `file://${dataDir}`,
-    connected: false,
-  };
-
-  async function initPgliteSafely(): Promise<void> {
-    try {
-      prepareDataDir();
-      pgliteClient = new PGlite(dataDir);
-      await pgliteClient.waitReady;
-      await pgliteClient.query('SELECT 1');
-      dbInfo.connected = true;
-      dbInfo.lastError = undefined;
-    } catch (err: any) {
-      console.warn('PGlite directory initialization failed, falling back to clean in-memory database:', err?.message);
-      try {
-        if (fs.existsSync(dataDir)) {
-          fs.rmSync(dataDir, { recursive: true, force: true });
-        }
-      } catch (_) {}
-      try {
-        pgliteClient = new PGlite();
-        await pgliteClient.waitReady;
-        await pgliteClient.query('SELECT 1');
-        dbInfo.connected = true;
-        dbInfo.lastError = undefined;
-      } catch (inMemErr: any) {
-        console.error('PGlite in-memory fallback failed:', inMemErr);
-        dbInfo.connected = false;
-        dbInfo.lastError = inMemErr?.message || String(inMemErr);
-      }
-    }
-    if (pgliteClient) {
-      drizzleInstance = drizzlePglite(pgliteClient, { schema });
-    }
-  }
-
   waitReadyPromise = initPgliteSafely();
 }
 
@@ -252,7 +248,8 @@ export const pgClient = {
           try {
             const res = await client.query(text);
             client.release();
-            return { rows: res.rows as T[], rowCount: res.rowCount ?? res.rows.length };
+            const rows = Array.isArray(res) ? (res[res.length - 1]?.rows || []) : (res?.rows || []);
+            return { rows: rows as T[], rowCount: res?.rowCount ?? rows.length };
           } catch (txErr: any) {
             try {
               client.release(true); // Discard broken client
@@ -261,14 +258,16 @@ export const pgClient = {
           }
         }
         const res = await rawPool.query(text);
-        return { rows: res.rows as T[], rowCount: res.rowCount ?? res.rows.length };
+        const rows = Array.isArray(res) ? (res[res.length - 1]?.rows || []) : (res?.rows || []);
+        return { rows: rows as T[], rowCount: res?.rowCount ?? rows.length };
       }
 
       // If currently inside an active transaction, use the transaction's dedicated client
       if (store && store.client) {
         try {
           const res = await store.client.query(text, params);
-          return { rows: res.rows as T[], rowCount: res.rowCount ?? res.rows.length };
+          const rows = Array.isArray(res) ? (res[res.length - 1]?.rows || []) : (res?.rows || []);
+          return { rows: rows as T[], rowCount: res?.rowCount ?? rows.length };
         } catch (err: any) {
           if (isTransientConnectionError(err)) {
             try {
@@ -285,7 +284,8 @@ export const pgClient = {
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const res = await rawPool.query(text, params);
-          return { rows: res.rows as T[], rowCount: res.rowCount ?? res.rows.length };
+          const rows = Array.isArray(res) ? (res[res.length - 1]?.rows || []) : (res?.rows || []);
+          return { rows: rows as T[], rowCount: res?.rowCount ?? rows.length };
         } catch (err: any) {
           lastErr = err;
           if (attempt === 1 && isTransientConnectionError(err)) {
@@ -303,14 +303,16 @@ export const pgClient = {
       try {
         await pgliteClient.waitReady;
         const res = await pgliteClient.query<T>(text, params);
-        return { rows: res.rows, rowCount: (res as any).affectedRows ?? res.rows.length };
+        const rows = res?.rows || [];
+        return { rows, rowCount: (res as any)?.affectedRows ?? rows.length };
       } catch (err: any) {
         if (String(err?.message || err).includes('Aborted')) {
           console.warn('PGlite instance aborted, recovering with fresh instance...');
           pgliteClient = new PGlite();
           await pgliteClient.waitReady;
           const res = await pgliteClient.query<T>(text, params);
-          return { rows: res.rows, rowCount: (res as any).affectedRows ?? res.rows.length };
+          const rows = res?.rows || [];
+          return { rows, rowCount: (res as any)?.affectedRows ?? rows.length };
         }
         throw err;
       }

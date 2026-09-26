@@ -302,6 +302,36 @@ router.post('/ai-suggest', requireAuth, async (req: AuthenticatedRequest, res: R
   }
 });
 
+let productColumnsVerified = false;
+
+async function ensureProductAndSettingsColumns() {
+  if (productColumnsVerified) return;
+  try {
+    const reg = await pgClient.query<{ has_products: boolean; has_settings: boolean }>(
+      "SELECT (to_regclass('public.products') IS NOT NULL) as has_products, (to_regclass('public.company_settings') IS NOT NULL) as has_settings"
+    );
+    if (reg.rows[0]?.has_settings) {
+      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'NEGOTIABLE'");
+      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_margin NUMERIC(5, 2) NOT NULL DEFAULT 30.00");
+      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    }
+    if (reg.rows[0]?.has_products) {
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS margin_type VARCHAR(30) NOT NULL DEFAULT 'FIXED'");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_calculation_method VARCHAR(30) NOT NULL DEFAULT 'FIXED_AMOUNT'");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC(5, 2) DEFAULT 30.00");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_amount NUMERIC(12, 2) DEFAULT 0");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_min_margin NUMERIC(5, 2)");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_max_margin NUMERIC(5, 2)");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price NUMERIC(12, 2)");
+    }
+    if (reg.rows[0]?.has_settings && reg.rows[0]?.has_products) {
+      productColumnsVerified = true;
+    }
+  } catch (_) {}
+}
+
 // Company pricing settings helper
 export async function getCompanyPricingSettings(): Promise<{
   pricingMode: string;
@@ -314,6 +344,7 @@ export async function getCompanyPricingSettings(): Promise<{
   currencySymbol: string;
 }> {
   try {
+    await ensureProductAndSettingsColumns();
     const res = await pgClient.query<any>(
       'SELECT pricing_mode, min_profit_margin, min_profit_amount, max_profit_margin, max_profit_amount, fixed_profit_margin, fixed_profit_amount, currency_symbol FROM company_settings LIMIT 1'
     );
@@ -372,7 +403,8 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
         `SELECT p.id, p.name, p.brand_id, b.name as brand_name, COALESCE(b.logo, '') as brand_logo,
                 p.category_id, c.name as category_name, p.sku, p.article, p.barcode, 
                 p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
-                p.margin_type, p.custom_min_margin, p.custom_max_margin,
+                p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
+                p.custom_min_margin, p.custom_max_margin,
                 p.sale_price, p.min_sale_price, p.max_sale_price,
                 p.total_stock, COALESCE(c.low_stock_limit, p.low_stock_limit, 5) as low_stock_limit, p.active
          FROM products p
@@ -422,6 +454,10 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
       description: row.description,
       costPrice,
       marginType,
+      profitCalculationMethod: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
+      profit_calculation_method: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
+      profitMargin: row.profit_margin !== null && row.profit_margin !== undefined ? parseFloat(row.profit_margin) : null,
+      profitAmount: row.profit_amount !== null && row.profit_amount !== undefined ? parseFloat(row.profit_amount) : null,
       customMinMargin: row.custom_min_margin ? parseFloat(row.custom_min_margin) : null,
       customMaxMargin: row.custom_max_margin ? parseFloat(row.custom_max_margin) : null,
       salePrice,
@@ -443,13 +479,15 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
 // List Products
 router.get('/', requireAuth, async (req, res: Response) => {
   try {
+    await ensureProductAndSettingsColumns();
     const { search, brandId, categoryId, lowStockOnly, limit } = req.query;
 
     let query = `
       SELECT p.id, p.name, p.brand_id, b.name as brand_name, COALESCE(b.logo, '') as brand_logo,
              p.category_id, c.name as category_name, p.sku, p.article, p.barcode, 
              p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
-             p.margin_type, p.custom_min_margin, p.custom_max_margin,
+             p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
+             p.custom_min_margin, p.custom_max_margin,
              p.sale_price, p.min_sale_price, p.max_sale_price,
              p.total_stock, COALESCE(c.low_stock_limit, p.low_stock_limit, 5) as low_stock_limit, p.active, p.created_at, p.updated_at
       FROM products p
@@ -521,6 +559,10 @@ router.get('/', requireAuth, async (req, res: Response) => {
         description: row.description,
         costPrice: cost,
         marginType,
+        profitCalculationMethod: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
+        profit_calculation_method: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
+        profitMargin: row.profit_margin !== null && row.profit_margin !== undefined ? parseFloat(row.profit_margin) : null,
+        profitAmount: row.profit_amount !== null && row.profit_amount !== undefined ? parseFloat(row.profit_amount) : null,
         customMinMargin: row.custom_min_margin ? parseFloat(row.custom_min_margin) : null,
         customMaxMargin: row.custom_max_margin ? parseFloat(row.custom_max_margin) : null,
         salePrice,
@@ -594,6 +636,10 @@ router.get('/:id', requireAuth, async (req, res: Response) => {
         description: row.description,
         costPrice: cost,
         marginType,
+        profitCalculationMethod: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
+        profit_calculation_method: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
+        profitMargin: row.profit_margin !== null && row.profit_margin !== undefined ? parseFloat(row.profit_margin) : null,
+        profitAmount: row.profit_amount !== null && row.profit_amount !== undefined ? parseFloat(row.profit_amount) : null,
         customMinMargin: row.custom_min_margin ? parseFloat(row.custom_min_margin) : null,
         customMaxMargin: row.custom_max_margin ? parseFloat(row.custom_max_margin) : null,
         salePrice,
@@ -629,6 +675,12 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       cost_price,
       marginType,
       margin_type,
+      profitCalculationMethod,
+      profit_calculation_method,
+      profitMargin,
+      profit_margin,
+      profitAmount,
+      profit_amount,
       customMinMargin,
       custom_min_margin,
       customMaxMargin,
@@ -666,6 +718,14 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
     // Pricing policy & integer price handling
     const rawMarginType = String(marginType || margin_type || (settings.pricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE')).toUpperCase();
     const finalMarginType = rawMarginType === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+    const rawCalcMethod = String(profitCalculationMethod || profit_calculation_method || 'FIXED_AMOUNT').toUpperCase();
+    const finalCalcMethod = rawCalcMethod === 'PROFIT_MARGIN' ? 'PROFIT_MARGIN' : 'FIXED_AMOUNT';
+    const finalProfitMargin = profitMargin !== undefined && profitMargin !== null && profitMargin !== ''
+      ? parseFloat(String(profitMargin))
+      : (profit_margin !== undefined && profit_margin !== null && profit_margin !== '' ? parseFloat(String(profit_margin)) : null);
+    const finalProfitAmount = profitAmount !== undefined && profitAmount !== null && profitAmount !== ''
+      ? parseFloat(String(profitAmount))
+      : (profit_amount !== undefined && profit_amount !== null && profit_amount !== '' ? parseFloat(String(profit_amount)) : null);
     const finalCustomMinMargin = customMinMargin !== undefined && customMinMargin !== null && customMinMargin !== ''
       ? parseFloat(String(customMinMargin))
       : (custom_min_margin ? parseFloat(String(custom_min_margin)) : null);
@@ -801,9 +861,10 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       const productRes = await pgClient.query<{ id: number }>(
         `INSERT INTO products (
           name, brand_id, category_id, sku, article, barcode, primary_image_url, 
-          description, cost_price, margin_type, custom_min_margin, custom_max_margin,
+          description, cost_price, margin_type, profit_calculation_method, profit_margin, profit_amount,
+          custom_min_margin, custom_max_margin,
           sale_price, min_sale_price, max_sale_price, total_stock, low_stock_limit, active
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, true)
         RETURNING id`,
         [
           cleanName,
@@ -816,6 +877,9 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
           description || '',
           finalCostPrice,
           finalMarginType,
+          finalCalcMethod,
+          finalProfitMargin,
+          finalProfitAmount,
           finalCustomMinMargin,
           finalCustomMaxMargin,
           finalSalePrice,
@@ -883,6 +947,12 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
       cost_price,
       marginType,
       margin_type,
+      profitCalculationMethod,
+      profit_calculation_method,
+      profitMargin,
+      profit_margin,
+      profitAmount,
+      profit_amount,
       customMinMargin,
       custom_min_margin,
       customMaxMargin,
@@ -961,6 +1031,19 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
     const rawMarginType = marginType !== undefined ? marginType : (margin_type !== undefined ? margin_type : current.margin_type);
     const finalMarginType = String(rawMarginType || 'FIXED').toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
 
+    const rawCalcMethod = profitCalculationMethod !== undefined
+      ? profitCalculationMethod
+      : (profit_calculation_method !== undefined ? profit_calculation_method : current.profit_calculation_method);
+    const finalCalcMethod = String(rawCalcMethod || 'FIXED_AMOUNT').toUpperCase() === 'PROFIT_MARGIN' ? 'PROFIT_MARGIN' : 'FIXED_AMOUNT';
+
+    const finalProfitMargin = profitMargin !== undefined
+      ? (profitMargin !== null && profitMargin !== '' ? parseFloat(String(profitMargin)) : null)
+      : (profit_margin !== undefined ? (profit_margin !== null && profit_margin !== '' ? parseFloat(String(profit_margin)) : null) : current.profit_margin);
+
+    const finalProfitAmount = profitAmount !== undefined
+      ? (profitAmount !== null && profitAmount !== '' ? parseFloat(String(profitAmount)) : null)
+      : (profit_amount !== undefined ? (profit_amount !== null && profit_amount !== '' ? parseFloat(String(profit_amount)) : null) : current.profit_amount);
+
     const finalCustomMinMargin = customMinMargin !== undefined
       ? (customMinMargin !== null && customMinMargin !== '' ? parseFloat(String(customMinMargin)) : null)
       : (custom_min_margin !== undefined ? (custom_min_margin !== null && custom_min_margin !== '' ? parseFloat(String(custom_min_margin)) : null) : current.custom_min_margin);
@@ -1005,8 +1088,9 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
         primary_image_url = $7, description = $8, cost_price = $9, total_stock = $10,
         low_stock_limit = $11, active = $12, margin_type = $13, custom_min_margin = $14,
         custom_max_margin = $15, sale_price = $16, min_sale_price = $17, max_sale_price = $18,
+        profit_calculation_method = $19, profit_margin = $20, profit_amount = $21,
         updated_at = NOW()
-      WHERE id = $19`,
+      WHERE id = $22`,
       [
         finalName,
         brandId !== undefined ? (brandId ? parseInt(brandId, 10) : null) : current.brand_id,
@@ -1026,6 +1110,9 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
         finalSalePrice,
         finalMinSalePrice,
         finalMaxSalePrice,
+        finalCalcMethod,
+        finalProfitMargin,
+        finalProfitAmount,
         id,
       ]
     );

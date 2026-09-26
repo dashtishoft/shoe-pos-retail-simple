@@ -47,7 +47,7 @@ import { useScrollActiveTab } from '../../hooks/useScrollActiveTab.ts';
 interface SettingsViewProps {
   currentUser: any;
   companySettings: any;
-  onSettingsUpdated: () => void;
+  onSettingsUpdated: (updatedSettings?: any) => void;
   onOpenInstallWizard?: () => void;
   initialTab?: 'store' | 'users' | 'printers' | 'backup' | 'install';
 }
@@ -102,6 +102,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     max_profit_margin: companySettings?.max_profit_margin !== undefined ? Number(companySettings.max_profit_margin) : (companySettings?.maxProfitMargin !== undefined ? Number(companySettings.maxProfitMargin) : 30),
     max_profit_amount: companySettings?.max_profit_amount !== undefined ? Number(companySettings.max_profit_amount) : (companySettings?.maxProfitAmount !== undefined ? Number(companySettings.maxProfitAmount) : 0),
   });
+
+  useEffect(() => {
+    let mounted = true;
+    api.settings.get().then((res) => {
+      if (mounted && res?.settings) {
+        const s = res.settings;
+        setFormData({
+          company_name: s?.company_name || s?.companyName || s?.name || '',
+          company_phone: s?.company_phone || s?.companyPhone || s?.phone || '',
+          company_email: s?.company_email || s?.companyEmail || s?.email || '',
+          company_address: s?.company_address || s?.companyAddress || s?.address || '',
+          strn: s?.strn || '',
+          tax_id: s?.tax_id || s?.taxId || s?.tax_number || s?.taxNumber || '',
+          website: s?.website || '',
+          logo: s?.logo || '',
+
+          currency_name: s?.currency_name || s?.currencyName || 'Pakistani Rupee',
+          currency_symbol: s?.currency_symbol || s?.currencySymbol || 'Rs.',
+          barcode_prefix: s?.barcode_prefix || s?.barcodePrefix || '9861234',
+          purchase_prefix: s?.purchase_prefix || s?.purchasePrefix || 'PUR-',
+          invoice_prefix: s?.invoice_prefix || s?.invoicePrefix || 'INV-',
+
+          currency: s?.currency || 'PKR',
+          invoice_footer: s?.invoice_footer || s?.invoiceFooter || '',
+          low_stock_limit: s?.low_stock_limit || s?.lowStockLimit || 5,
+          pricing_mode: (s?.pricing_mode || s?.pricingMode || 'NEGOTIABLE').toUpperCase(),
+          fixed_profit_margin: s?.fixed_profit_margin !== undefined ? Number(s.fixed_profit_margin) : (s?.fixedProfitMargin !== undefined ? Number(s.fixedProfitMargin) : 30),
+          fixed_profit_amount: s?.fixed_profit_amount !== undefined ? Number(s.fixed_profit_amount) : (s?.fixedProfitAmount !== undefined ? Number(s.fixedProfitAmount) : 0),
+          min_profit_margin: s?.min_profit_margin !== undefined ? Number(s.min_profit_margin) : (s?.minProfitMargin !== undefined ? Number(s.minProfitMargin) : 15),
+          min_profit_amount: s?.min_profit_amount !== undefined ? Number(s.min_profit_amount) : (s?.minProfitAmount !== undefined ? Number(s.minProfitAmount) : 0),
+          max_profit_margin: s?.max_profit_margin !== undefined ? Number(s.max_profit_margin) : (s?.maxProfitMargin !== undefined ? Number(s.maxProfitMargin) : 30),
+          max_profit_amount: s?.max_profit_amount !== undefined ? Number(s.max_profit_amount) : (s?.maxProfitAmount !== undefined ? Number(s.maxProfitAmount) : 0),
+        });
+      }
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (companySettings) {
@@ -371,9 +410,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsSavingSettings(true);
     setSettingsSuccess(false);
     try {
-      await api.settings.update(formData);
+      const updateRes = await api.settings.update(formData);
       setSettingsSuccess(true);
-      onSettingsUpdated();
+      await Promise.resolve(onSettingsUpdated(updateRes?.settings));
       setTimeout(() => setSettingsSuccess(false), 3500);
     } catch (err: any) {
       alert(err.message || 'Failed to update settings');
