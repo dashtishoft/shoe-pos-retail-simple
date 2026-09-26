@@ -21,7 +21,9 @@ import backupRoutes from './src/server/routes/backupRoutes.ts';
 import notificationRoutes from './src/server/routes/notificationRoutes.ts';
 
 const app = express();
-const PORT = 3000;
+const portArgIndex = process.argv.indexOf('--port');
+const cliPort = portArgIndex !== -1 && process.argv[portArgIndex + 1] ? parseInt(process.argv[portArgIndex + 1], 10) : NaN;
+const PORT = !isNaN(cliPort) && cliPort > 0 ? cliPort : parseInt(process.env.PORT || '3000', 10);
 
 // Body parser with support for image data and full database backups
 app.use(express.json({ limit: '50mb' }));
@@ -74,13 +76,13 @@ export const dbInitPromise = (async () => {
   }
 })();
 
-// Middleware to ensure DB connection is ready before processing requests
-app.use(async (_req, _res, next) => {
+// Middleware to ensure DB connection is ready before processing API requests
+app.use('/api', async (_req, _res, next) => {
   try {
     if (!isDbConnected) {
       await Promise.race([
         dbInitPromise,
-        new Promise((resolve) => setTimeout(resolve, 2500)),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
       ]);
     }
   } catch (_) {}
@@ -301,16 +303,6 @@ app.get(['/download/apk', '/api/download/apk', '/assets/StepSync-POS.apk', '/ass
 
 // Server startup for containerized environment (e.g. Cloud Run)
 async function setupFrontendAndListen() {
-  // Ensure all database tables, columns, and indexes are in place
-  try {
-    const status = await checkInstallationStatus().catch(() => ({ isInstalled: false }));
-    if (status.isInstalled) {
-      await ensureDatabaseSchema();
-    }
-  } catch (err: any) {
-    console.warn('Notice: Background schema check skipped:', err?.message);
-  }
-
   // Vite middleware for local development
   if (process.env.NODE_ENV !== 'production') {
     try {
@@ -336,10 +328,24 @@ async function setupFrontendAndListen() {
     });
   }
 
-  // Bind to port 3000 and 0.0.0.0 for container ingress routing
-  app.listen(PORT, '0.0.0.0', () => {
+  // Bind to port 3000 and 0.0.0.0 for container ingress routing immediately
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Shoe Shop POS Server running on port ${PORT}`);
   });
+
+  // Non-blocking background database schema check
+  (async () => {
+    try {
+      const status = await checkInstallationStatus().catch(() => ({ isInstalled: false }));
+      if (status?.isInstalled) {
+        await ensureDatabaseSchema();
+      }
+    } catch (err: any) {
+      console.warn('Notice: Background schema check skipped:', err?.message);
+    }
+  })();
+
+  return server;
 }
 
 setupFrontendAndListen();

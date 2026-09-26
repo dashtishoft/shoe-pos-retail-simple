@@ -20,18 +20,21 @@ import {
   RotateCcw,
   X,
   CheckCircle2,
+  Lock,
+  ImageIcon,
 } from 'lucide-react';
 import { api } from '../../services/api.ts';
 import { playAudioFeedback } from '../../utils/audio.ts';
 import { InvoicePrintModal } from './InvoicePrintModal.tsx';
 import { ShoeExchangeModal } from './ShoeExchangeModal.tsx';
-import { formatStockPrice, cleanStockPriceInput, getProductRetailPrice } from '../../utils/priceFormat.ts';
+import { formatStockPrice, cleanStockPriceInput, getProductRetailPrice, getProductMinFloorPrice } from '../../utils/priceFormat.ts';
 import type { ActiveExchange } from '../../types.ts';
 import { offlineQueueService } from '../../services/offlineQueueService.ts';
 import { lookupCachedProductOffline, searchCachedProductsOffline } from '../../utils/offlineDb.ts';
 import { useOfflineSync } from '../../utils/useOfflineSync.ts';
 import { OfflineSyncModal } from './OfflineSyncModal.tsx';
 import { BrandLogo } from '../common/BrandLogo.tsx';
+import { CustomerPicker } from './CustomerPicker.tsx';
 
 interface CartItem {
   productId: number;
@@ -42,7 +45,9 @@ interface CartItem {
   sku: string;
   barcode: string;
   totalStock: number;
-  purchasePrice: number;
+  costPrice: number;
+  pricingPolicy?: 'FIXED' | 'NEGOTIABLE';
+  salePrice?: number;
   minSalePrice: number;
   maxSalePrice?: number;
   unitPrice: number;
@@ -99,9 +104,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
-  const [quickCustomerName, setQuickCustomerName] = useState('');
-  const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
-  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   // Direct Shoe Exchange State
   const [activeExchange, setActiveExchange] = useState<ActiveExchange | null>(initialExchange || null);
@@ -170,6 +173,14 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const autoLookupTimerRef = useRef<any>(null);
 
   const currencySymbol = companySettings?.currency_symbol || companySettings?.currencySymbol || 'Rs.';
+  const rawPricingMode = String(companySettings?.pricing_mode || companySettings?.pricingMode || 'NEGOTIABLE').toUpperCase();
+  const isFixedPolicy = rawPricingMode === 'FIXED';
+  const fixedProfitMarginSetting =
+    typeof companySettings?.fixed_profit_margin === 'number'
+      ? companySettings.fixed_profit_margin
+      : typeof companySettings?.fixedProfitMargin === 'number'
+      ? companySettings.fixedProfitMargin
+      : parseFloat(companySettings?.fixed_profit_margin || companySettings?.fixedProfitMargin || '30') || 30;
 
   // Offline Persistence & Background Synchronization Hook
   const { isOnline, pendingCount } = useOfflineSync();
@@ -286,7 +297,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         return;
       }
 
-      if (showAdminOverrideModal || completedSale) return;
+      if (showAdminOverrideModal || completedSale || isCustomerModalOpen) return;
 
       if (e.key === 'F2' || (e.ctrlKey && e.key === 'k')) {
         e.preventDefault();
@@ -334,19 +345,53 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     const onPosShoeExchangeEvent = () => {
       setIsExchangeModalOpen(true);
     };
+    const onPosAddToCartEvent = (e: any) => {
+      const product = e.detail?.product;
+      if (product) {
+        addProductToCart(product);
+        playAudioFeedback.barcodeScan();
+        playAudioFeedback.invoiceItemAdded();
+        setLastScannedFeedback({
+          message: 'Product added to invoice',
+          article: product.article || product.name,
+          sku: product.sku,
+        });
+        setTimeout(() => setLastScannedFeedback(null), 3200);
+      }
+    };
+
+    // Check for pending product added from Quick Price search bar
+    const pendingProductStr = sessionStorage.getItem('pending_pos_product');
+    if (pendingProductStr) {
+      try {
+        const prod = JSON.parse(pendingProductStr);
+        sessionStorage.removeItem('pending_pos_product');
+        addProductToCart(prod);
+        playAudioFeedback.barcodeScan();
+        playAudioFeedback.invoiceItemAdded();
+        setLastScannedFeedback({
+          message: 'Product added to invoice',
+          article: prod.article || prod.name,
+          sku: prod.sku,
+        });
+        setTimeout(() => setLastScannedFeedback(null), 3200);
+      } catch {}
+    }
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('pos:delete-sale', onPosDeleteSaleEvent);
     window.addEventListener('pos:print-receipt', onPosPrintReceiptEvent);
     window.addEventListener('pos:shoe-exchange', onPosShoeExchangeEvent);
+    window.addEventListener('pos:add-to-cart', onPosAddToCartEvent);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('pos:delete-sale', onPosDeleteSaleEvent);
       window.removeEventListener('pos:print-receipt', onPosPrintReceiptEvent);
       window.removeEventListener('pos:shoe-exchange', onPosShoeExchangeEvent);
+      window.removeEventListener('pos:add-to-cart', onPosAddToCartEvent);
     };
-  }, [cart, isSubmitting, showAdminOverrideModal, completedSale, barcodeInput, inputMode, continuousScan, activeExchange]);
+  }, [cart, isSubmitting, showAdminOverrideModal, completedSale, isCustomerModalOpen, barcodeInput, inputMode, continuousScan, activeExchange]);
 
   // Core 'Find Product' Event: Triggered immediately when barcode or SKU is scanned or entered
   const triggerFindAndAddProduct = async (rawCode: string) => {
@@ -382,7 +427,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           matchedProduct = {
             ...cached,
             totalStock: cached.totalStock ?? cached.total_stock ?? 999,
-            purchasePrice: parseFloat(cached.purchasePrice || cached.purchase_price || 0),
+            costPrice: parseFloat(cached.costPrice || cached.cost_price || 0),
             minSalePrice: parseFloat(cached.minSalePrice || cached.min_sale_price || 0),
             maxSalePrice: parseFloat(cached.maxSalePrice || cached.max_sale_price || 0),
             salePrice: parseFloat(cached.salePrice || cached.sale_price || 0),
@@ -527,60 +572,55 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     }
   };
 
-  // Add product to POS Cart
+  // Add product to POS Cart - Uses product's actual saved selling price and policy
   const addProductToCart = (product: any) => {
     const prodIdentifier = product.article || product.name || 'Shoe';
-    const cost = Number(product.purchasePrice) || 0;
+    const cost = Math.max(0, Math.round(Number(
+      product.costPrice !== undefined && product.costPrice !== null
+        ? product.costPrice
+        : product.cost_price !== undefined && product.cost_price !== null
+        ? product.cost_price
+        : 0
+    )));
 
-    const maxMarginThreshold =
-      typeof companySettings?.max_profit_margin === 'number'
-        ? companySettings.max_profit_margin
-        : typeof companySettings?.max_profit_margin_percent === 'number'
-        ? companySettings.max_profit_margin_percent
-        : typeof companySettings?.max_profit_margin === 'string'
-        ? parseFloat(companySettings.max_profit_margin)
-        : 30;
+    const itemPolicy: 'FIXED' | 'NEGOTIABLE' = String(
+      product.marginType ||
+      product.margin_type ||
+      (product.salePrice !== undefined && product.salePrice !== null ? 'FIXED' : (companySettings?.pricing_mode || 'FIXED'))
+    ).toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
 
-    const minMarginThreshold =
-      typeof companySettings?.min_profit_margin === 'number'
-        ? companySettings.min_profit_margin
-        : typeof companySettings?.minProfitMargin === 'number'
-        ? companySettings.minProfitMargin
-        : typeof companySettings?.min_profit_margin === 'string'
-        ? parseFloat(companySettings.min_profit_margin)
-        : 10;
+    const isItemFixed = itemPolicy === 'FIXED';
 
-    // Minimum Allowed Floor: Cost + Minimum Profit Margin
-    const calculatedMinFloor = cost > 0
-      ? Math.round(cost * (1 + minMarginThreshold / 100))
-      : Number(product.minSalePrice || 0);
+    let itemSalePrice: number = 0;
+    let itemMinSalePrice: number = 0;
+    let itemMaxSalePrice: number = 0;
 
-    // Maximum Sale Price (MRP): Cost + Maximum Profit Margin (or stored maxSalePrice)
-    const calculatedMaxPrice = cost > 0
-      ? Math.round(cost * (1 + maxMarginThreshold / 100))
-      : 0;
+    if (isItemFixed) {
+      const rawSale = product.salePrice !== undefined && product.salePrice !== null ? product.salePrice : product.sale_price;
+      itemSalePrice = rawSale !== undefined && rawSale !== null && rawSale !== ''
+        ? Math.round(Number(rawSale))
+        : (cost > 0 ? Math.round(cost * (1 + (companySettings?.fixed_profit_margin || companySettings?.fixedProfitMargin || 30) / 100)) : 0);
+      itemMinSalePrice = itemSalePrice;
+      itemMaxSalePrice = itemSalePrice;
+    } else {
+      const rawMin = product.minSalePrice !== undefined && product.minSalePrice !== null ? product.minSalePrice : product.min_sale_price;
+      const rawMax = product.maxSalePrice !== undefined && product.maxSalePrice !== null ? product.maxSalePrice : product.max_sale_price;
 
-    // Sticker / Initial Retail Selling Price (matches barcode sticker printed on shoe box)
-    const stickerRetailPrice = getProductRetailPrice(product);
+      itemMinSalePrice = rawMin !== undefined && rawMin !== null && rawMin !== ''
+        ? Math.round(Number(rawMin))
+        : (cost > 0 ? Math.round(cost * (1 + (companySettings?.min_profit_margin || companySettings?.minProfitMargin || 15) / 100)) : 0);
 
-    const maxSalePrice = product.maxSalePrice !== undefined && product.maxSalePrice !== null && Number(product.maxSalePrice) > 0
-      ? Number(product.maxSalePrice)
-      : stickerRetailPrice > 0
-      ? stickerRetailPrice
-      : calculatedMaxPrice > 0
-      ? calculatedMaxPrice
-      : Number(product.minSalePrice || 0);
+      itemMaxSalePrice = rawMax !== undefined && rawMax !== null && rawMax !== ''
+        ? Math.max(itemMinSalePrice, Math.round(Number(rawMax)))
+        : (cost > 0 ? Math.max(itemMinSalePrice, Math.round(cost * (1 + (companySettings?.max_profit_margin || companySettings?.maxProfitMargin || 30) / 100))) : itemMinSalePrice);
 
-    const minSalePrice = calculatedMinFloor > 0
-      ? calculatedMinFloor
-      : Number(product.minSalePrice || 0);
+      itemSalePrice = itemMaxSalePrice;
+    }
 
-    // Initial unit price in cart: EXACTLY identical to the price on the barcode sticker (M.R.P. / retail price)
-    const startingUnitPrice = stickerRetailPrice > 0
-      ? stickerRetailPrice
-      : maxSalePrice > 0
-      ? maxSalePrice
-      : (minSalePrice > 0 ? minSalePrice : 0);
+    // Initial unit price in cart:
+    // Fixed: saved sale_price
+    // Negotiable: saved max_sale_price (the sticker M.R.P.)
+    const startingUnitPrice = isItemFixed ? itemSalePrice : itemMaxSalePrice;
 
     setCart((prevCart) => {
       const existingIdx = prevCart.findIndex((item) => item.productId === product.id);
@@ -621,9 +661,11 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           sku: product.sku,
           barcode: product.barcode,
           totalStock: product.totalStock,
-          purchasePrice: cost,
-          minSalePrice: minSalePrice,
-          maxSalePrice: maxSalePrice,
+          costPrice: cost,
+          pricingPolicy: itemPolicy,
+          salePrice: itemSalePrice,
+          minSalePrice: itemMinSalePrice,
+          maxSalePrice: itemMaxSalePrice,
           unitPrice: startingUnitPrice,
           quantity: 1,
           discount: 0,
@@ -687,29 +729,49 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     );
   };
 
-  // Floor Protection in Cart: safely clamp to floor upon blur if user sets below minimum threshold
+  // Price Policy Protection in Cart: safely enforce fixed price or negotiable range [min, max]
   const handleCartPriceBlur = (productId: number, rawPrice: number) => {
     const item = cart.find((i) => i.productId === productId);
     if (!item) return;
 
-    const cost = item.purchasePrice || 0;
-    const minMarginThreshold =
-      typeof companySettings?.min_profit_margin === 'number'
-        ? companySettings.min_profit_margin
-        : typeof companySettings?.minProfitMargin === 'number'
-        ? companySettings.minProfitMargin
-        : 10;
+    const isItemFixed = (item.pricingPolicy || (isFixedPolicy ? 'FIXED' : 'NEGOTIABLE')) === 'FIXED';
+    const targetFixedPrice = Math.round(item.salePrice || item.minSalePrice || item.unitPrice);
 
-    const minFloor = cost > 0
-      ? Math.round(cost * (1 + minMarginThreshold / 100))
-      : (item.minSalePrice || 0);
+    if (isItemFixed) {
+      if (rawPrice !== targetFixedPrice) {
+        playAudioFeedback.warning();
+        updateUnitPrice(productId, targetFixedPrice);
+        setCartFloorNotice({
+          productId,
+          message: `Fixed Price Item: Unit price is fixed at ${currencySymbol} ${formatStockPrice(targetFixedPrice)}.`,
+        });
+        setTimeout(() => {
+          setCartFloorNotice((prev) => (prev?.productId === productId ? null : prev));
+        }, 4500);
+      }
+      return;
+    }
 
-    if (rawPrice < minFloor) {
+    // Negotiable product: range is [minSalePrice, maxSalePrice]
+    const minFloor = Math.round(item.minSalePrice || 0);
+    const maxCeiling = Math.round(item.maxSalePrice || item.unitPrice || 0);
+
+    if (minFloor > 0 && rawPrice < minFloor) {
       playAudioFeedback.warning();
       updateUnitPrice(productId, minFloor);
       setCartFloorNotice({
         productId,
-        message: `Unit price for "${item.article || item.name}" cannot be below minimum profit floor (${currencySymbol} ${formatStockPrice(minFloor)}) and was clamped to floor.`,
+        message: `Unit price for "${item.article || item.name}" cannot be below minimum floor (${currencySymbol} ${formatStockPrice(minFloor)}).`,
+      });
+      setTimeout(() => {
+        setCartFloorNotice((prev) => (prev?.productId === productId ? null : prev));
+      }, 4500);
+    } else if (maxCeiling > 0 && rawPrice > maxCeiling) {
+      playAudioFeedback.warning();
+      updateUnitPrice(productId, maxCeiling);
+      setCartFloorNotice({
+        productId,
+        message: `Unit price for "${item.article || item.name}" cannot exceed maximum sale price (${currencySymbol} ${formatStockPrice(maxCeiling)}).`,
       });
       setTimeout(() => {
         setCartFloorNotice((prev) => (prev?.productId === productId ? null : prev));
@@ -761,27 +823,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const setExactCash = () => setCashReceived(netTotalPayable);
   const addQuickCash = (amount: number) => {
     setCashReceived((prev) => (typeof prev === 'number' ? prev + amount : amount));
-  };
-
-  // Create Quick Customer
-  const handleCreateQuickCustomer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickCustomerName.trim() || !quickCustomerPhone.trim()) return;
-
-    try {
-      const res = await api.customers.create({
-        name: quickCustomerName.trim(),
-        phone: quickCustomerPhone.trim(),
-        address: 'Walk-in Counter',
-      });
-      setCustomers((prev) => [res.customer, ...prev]);
-      setSelectedCustomerId(res.customer.id);
-      setIsAddingCustomer(false);
-      setQuickCustomerName('');
-      setQuickCustomerPhone('');
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to add customer.');
-    }
   };
 
   // Handle Checkout
@@ -897,6 +938,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
       setSelectedCustomerId(null);
       setShowAdminOverrideModal(false);
       setOverridePendingItem(null);
+      loadCustomers();
     } catch (err: any) {
       // If server unreachable or connection dropped mid-call, gracefully offer offline queuing
       const isNetError =
@@ -1224,14 +1266,31 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   >
                     <div className="flex items-center space-x-3">
                       {prod.primaryImageUrl ? (
-                        <img
-                          src={prod.primaryImageUrl}
-                          alt={prod.article || prod.name}
-                          className="w-10 h-10 object-cover rounded border border-slate-200 dark:border-slate-700"
-                        />
+                        <div className="relative w-10 h-10 shrink-0 rounded border border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                          <img
+                            src={prod.primaryImageUrl}
+                            alt={prod.article || prod.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const skeleton = e.currentTarget.nextElementSibling;
+                              if (skeleton) skeleton.classList.remove('hidden');
+                            }}
+                          />
+                          <div className="hidden absolute inset-0 w-full h-full bg-slate-200/80 dark:bg-slate-800/80 animate-pulse flex flex-col items-center justify-center">
+                            <ImageIcon className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+                          </div>
+                        </div>
                       ) : (
-                        <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded flex items-center justify-center text-slate-400">
-                          <ShoppingBag className="w-5 h-5" />
+                        <div
+                          className="w-10 h-10 shrink-0 rounded border border-slate-200/80 dark:border-slate-800 bg-slate-200/80 dark:bg-slate-800/80 animate-pulse flex flex-col items-center justify-center p-1"
+                          title="No image - skeleton placeholder"
+                          aria-label="Product image skeleton"
+                        >
+                          <div className="w-4 h-4 rounded bg-slate-300/80 dark:bg-slate-700/80 flex items-center justify-center">
+                            <ImageIcon className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" />
+                          </div>
+                          <div className="w-5 h-1 bg-slate-300/70 dark:bg-slate-700/70 rounded-full mt-1" />
                         </div>
                       )}
                       <div>
@@ -1406,7 +1465,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                 <tr>
                   <th className="py-2.5 px-4">Article</th>
                   <th className="py-2.5 px-3 text-center w-28">Quantity</th>
-                  <th className="py-2.5 px-3 text-right w-44">Unit Price (MRP / Floor)</th>
+                  <th className="py-2.5 px-3 text-right w-44">
+                    Unit Price {isFixedPolicy ? '(Fixed Policy)' : '(MRP / Floor)'}
+                  </th>
                   <th className="py-2.5 px-4 text-right w-32">Total</th>
                   <th className="py-2.5 px-3 text-center w-12"></th>
                 </tr>
@@ -1452,33 +1513,10 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                     </tr>
                   ))}
                 {cart.map((item) => {
-                  // Minimum profit margin percentage configured in company settings (default: 10%)
-                  const minProfitMarginThreshold =
-                    typeof companySettings?.min_profit_margin === 'number'
-                      ? companySettings.min_profit_margin
-                      : typeof companySettings?.minProfitMargin === 'number'
-                      ? companySettings.minProfitMargin
-                      : 10;
-
-                  const maxProfitMarginThreshold =
-                    typeof companySettings?.max_profit_margin === 'number'
-                      ? companySettings.max_profit_margin
-                      : typeof companySettings?.maxProfitMargin === 'number'
-                      ? companySettings.maxProfitMargin
-                      : typeof companySettings?.max_profit_margin_percent === 'number'
-                      ? companySettings.max_profit_margin_percent
-                      : 30;
-
-                  const cost = item.purchasePrice || 0;
-                  const itemMinFloor = cost > 0
-                    ? Math.round(cost * (1 + minProfitMarginThreshold / 100))
-                    : (item.minSalePrice || 0);
-
-                  const itemMaxPrice = item.maxSalePrice && item.maxSalePrice > 0
-                    ? item.maxSalePrice
-                    : cost > 0
-                    ? Math.round(cost * (1 + maxProfitMarginThreshold / 100))
-                    : item.unitPrice;
+                  const isItemFixed = (item.pricingPolicy || (isFixedPolicy ? 'FIXED' : 'NEGOTIABLE')) === 'FIXED';
+                  const cost = item.costPrice || 0;
+                  const itemMinFloor = Math.round(item.minSalePrice || (isItemFixed ? item.unitPrice : 0));
+                  const itemMaxPrice = Math.round(item.maxSalePrice || item.unitPrice || 0);
 
                   // Effective sale price per unit
                   const effectiveUnitPrice = item.unitPrice;
@@ -1490,7 +1528,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       ? -100
                       : 0;
 
-                  const isBelowFloor = item.unitPrice < itemMinFloor;
+                  const isBelowFloor = !isItemFixed && itemMinFloor > 0 && item.unitPrice < itemMinFloor;
+                  const isAboveMax = !isItemFixed && itemMaxPrice > 0 && item.unitPrice > itemMaxPrice;
                   const isLoss = cost > 0 && effectiveUnitPrice < cost;
 
                   return (
@@ -1498,7 +1537,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                       key={item.productId}
                       id={`cart-row-${item.productId}`}
                       className={`transition ${
-                        isBelowFloor
+                        isBelowFloor || isAboveMax
                           ? 'bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-50/80 dark:hover:bg-rose-950/30 border-l-4 border-l-rose-500'
                           : 'hover:bg-slate-50/80 dark:hover:bg-[#131E35]/60'
                       }`}
@@ -1518,6 +1557,13 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                               </span>
                             </div>
                           )}
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider ${
+                            isItemFixed
+                              ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60'
+                              : 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60'
+                          }`}>
+                            {isItemFixed ? 'Fixed' : 'Negotiable'}
+                          </span>
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                           SKU: {item.sku} | Barcode: {item.barcode}
@@ -1532,9 +1578,19 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           >
                             <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
                             <span>
-                              {isLoss ? 'Selling at Loss!' : 'Below Profit Floor!'}{' '}
-                              <strong className="font-mono">{Math.round(currentMargin)}%</strong>{' '}
-                              <span className="text-rose-600 dark:text-rose-400 font-normal">(Min set: {minProfitMarginThreshold}%)</span>
+                              {isLoss ? 'Selling at Loss!' : 'Below Negotiable Floor!'}{' '}
+                              <strong className="font-mono">{currencySymbol} {formatStockPrice(item.unitPrice)}</strong>{' '}
+                              <span className="text-rose-600 dark:text-rose-400 font-normal">(Min allowed: {currencySymbol} {formatStockPrice(itemMinFloor)})</span>
+                            </span>
+                          </div>
+                        )}
+                        {isAboveMax && (
+                          <div
+                            className="inline-flex items-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 px-2 py-0.5 rounded font-semibold mt-1 shadow-2xs"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span>
+                              Exceeds Maximum Price! (Max: {currencySymbol} {formatStockPrice(itemMaxPrice)})
                             </span>
                           </div>
                         )}
@@ -1564,48 +1620,65 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                         </div>
                       </td>
 
-                      {/* Unit Price (Directly Editable in Cart with Floor Protection) */}
+                      {/* Unit Price (Directly Editable in Negotiable Mode, Fixed in Fixed Mode) */}
                       <td className="py-3 px-3 text-right align-top">
                         <div className="flex flex-col items-end">
                           <div className="inline-flex items-center justify-end space-x-1">
                             <span className="text-slate-400 dark:text-slate-500 font-mono text-xs">{currencySymbol}</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={item.unitPrice}
-                              onChange={(e) => {
-                                const val = Math.round(parseFloat(cleanStockPriceInput(e.target.value)) || 0);
-                                updateUnitPrice(item.productId, val);
-                              }}
-                              onBlur={(e) => {
-                                const val = Math.round(parseFloat(cleanStockPriceInput(e.target.value)) || 0);
-                                handleCartPriceBlur(item.productId, val);
-                              }}
-                              className={`w-24 text-right px-2 py-1 rounded-lg border font-mono text-xs font-bold outline-none transition focus:ring-2 ${
-                                isBelowFloor
-                                  ? 'border-rose-400 dark:border-rose-600 bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 ring-1 ring-rose-300 dark:ring-rose-800 focus:border-rose-600 focus:ring-rose-200'
-                                  : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0A0E1A] text-slate-900 dark:text-white focus:border-blue-600 dark:focus:border-blue-500 focus:ring-blue-100 dark:focus:ring-blue-950/50'
-                              }`}
-                              title={`Cost: ${currencySymbol} ${formatStockPrice(cost)} | MRP: ${currencySymbol} ${formatStockPrice(itemMaxPrice)} | Floor: ${currencySymbol} ${formatStockPrice(itemMinFloor)}`}
-                            />
+                            {isItemFixed ? (
+                              <input
+                                type="number"
+                                readOnly
+                                disabled
+                                value={item.unitPrice}
+                                className="w-24 text-right px-2 py-1 rounded-lg border font-mono text-xs font-bold bg-slate-100 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-200 dark:border-purple-800 cursor-not-allowed select-none"
+                                title={`Fixed Price Item: ${currencySymbol} ${formatStockPrice(item.unitPrice)}. Non-negotiable.`}
+                              />
+                            ) : (
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={item.unitPrice}
+                                onChange={(e) => {
+                                  const val = Math.round(parseFloat(cleanStockPriceInput(e.target.value)) || 0);
+                                  updateUnitPrice(item.productId, val);
+                                }}
+                                onBlur={(e) => {
+                                  const val = Math.round(parseFloat(cleanStockPriceInput(e.target.value)) || 0);
+                                  handleCartPriceBlur(item.productId, val);
+                                }}
+                                className={`w-24 text-right px-2 py-1 rounded-lg border font-mono text-xs font-bold outline-none transition focus:ring-2 ${
+                                  isBelowFloor || isAboveMax
+                                    ? 'border-rose-400 dark:border-rose-600 bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 ring-1 ring-rose-300 dark:ring-rose-800 focus:border-rose-600 focus:ring-rose-200'
+                                    : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0A0E1A] text-slate-900 dark:text-white focus:border-blue-600 dark:focus:border-blue-500 focus:ring-blue-100 dark:focus:ring-blue-950/50'
+                                }`}
+                                title={`Cost: ${currencySymbol} ${formatStockPrice(cost)} | Max: ${currencySymbol} ${formatStockPrice(itemMaxPrice)} | Floor: ${currencySymbol} ${formatStockPrice(itemMinFloor)}`}
+                              />
+                            )}
                           </div>
 
-                          {/* Reference: MRP and Minimum Floor */}
-                          <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-1 space-y-0.5 text-right">
-                            <div className="text-blue-600 dark:text-blue-400 font-medium">
-                              MRP: <strong className="font-bold">{currencySymbol} {formatStockPrice(itemMaxPrice)}</strong>
+                          {/* Reference: Fixed Policy vs Negotiable Range */}
+                          {isItemFixed ? (
+                            <div className="text-[10px] text-purple-700 dark:text-purple-400 font-mono mt-1 space-y-0.5 text-right flex items-center justify-end gap-1">
+                              <Lock className="w-3 h-3 text-purple-500 shrink-0" />
+                              <span>Fixed ({currencySymbol} {formatStockPrice(item.unitPrice)})</span>
                             </div>
-                            <div className="text-slate-600 dark:text-slate-400">
-                              Floor: <strong className="font-semibold text-slate-800 dark:text-slate-200">{currencySymbol} {formatStockPrice(itemMinFloor)}</strong>
-                              <span className="text-[9px] text-slate-400 ml-0.5">({minProfitMarginThreshold}%)</span>
+                          ) : (
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-1 space-y-0.5 text-right">
+                              <div className="text-indigo-600 dark:text-indigo-400 font-medium">
+                                Max: <strong className="font-bold">{currencySymbol} {formatStockPrice(itemMaxPrice)}</strong>
+                              </div>
+                              <div className="text-amber-700 dark:text-amber-400">
+                                Floor: <strong className="font-semibold">{currencySymbol} {formatStockPrice(itemMinFloor)}</strong>
+                              </div>
                             </div>
-                          </div>
+                          )}
 
                           {/* Notice when auto-clamped upon blur */}
                           {cartFloorNotice?.productId === item.productId && (
                             <div className="mt-1 p-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded text-right text-[10px] text-emerald-800 dark:text-emerald-300 font-semibold animate-in fade-in duration-150">
-                              Clamped to Floor ({currencySymbol} {formatStockPrice(itemMinFloor)})
+                              Clamped ({currencySymbol} {formatStockPrice(item.unitPrice)})
                             </div>
                           )}
 
@@ -1617,7 +1690,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                             >
                               <div className="flex items-center justify-end gap-1 text-[10px] font-bold text-rose-700 dark:text-rose-300">
                                 <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400 shrink-0" />
-                                <span>{isLoss ? 'Selling at Loss!' : 'Below Profit Floor!'}</span>
+                                <span>{isLoss ? 'Selling at Loss!' : 'Below Negotiable Floor!'}</span>
                               </div>
                               <p className="text-[9px] text-rose-600 dark:text-rose-400 mt-0.5">
                                 Min required: {currencySymbol} {formatStockPrice(itemMinFloor)}
@@ -1630,11 +1703,25 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                                     updateUnitPrice(item.productId, itemMinFloor);
                                     playAudioFeedback.barcodeScan();
                                   }}
-                                  className="text-[10px] px-2 py-0.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold rounded shadow-2xs cursor-pointer transition"
-                                  title="One-click fix: clamp price to minimum profit floor"
+                                  className="px-2 py-0.5 bg-rose-600 text-white rounded text-[10px] font-bold hover:bg-rose-700 transition cursor-pointer"
                                 >
-                                  Fix to Floor
+                                  Set to Min Floor
                                 </button>
+                              </div>
+                            </div>
+                          )}
+                          {isAboveMax && (
+                            <div
+                              className="mt-1.5 p-1.5 bg-amber-100/90 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 rounded-lg text-right max-w-[200px] shadow-2xs animate-in fade-in duration-150"
+                            >
+                              <div className="flex items-center justify-end gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <span>Above Max Price!</span>
+                              </div>
+                              <p className="text-[9px] text-amber-700 dark:text-amber-400 mt-0.5">
+                                Max allowed: {currencySymbol} {formatStockPrice(itemMaxPrice)}
+                              </p>
+                              <div className="mt-1 flex items-center justify-end gap-1">
                                 <button
                                   type="button"
                                   onMouseDown={(e) => e.preventDefault()}
@@ -1642,10 +1729,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                                     updateUnitPrice(item.productId, itemMaxPrice);
                                     playAudioFeedback.barcodeScan();
                                   }}
-                                  className="text-[10px] px-1.5 py-0.5 bg-white dark:bg-[#0E1628] hover:bg-blue-50 dark:hover:bg-blue-950/40 active:scale-95 text-blue-600 dark:text-blue-400 font-bold rounded border border-blue-300 dark:border-blue-700 cursor-pointer transition"
-                                  title="Reset price to Maximum Sale Price (MRP)"
+                                  className="px-2 py-0.5 bg-amber-600 text-white rounded text-[10px] font-bold hover:bg-amber-700 transition cursor-pointer"
                                 >
-                                  Reset MRP
+                                  Set to Max Price
                                 </button>
                               </div>
                             </div>
@@ -1700,67 +1786,27 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
       {/* RIGHT COLUMN: Customer, Payment, Cash Tender & Checkout */}
       <div className="w-full xl:w-96 shrink-0 flex flex-col gap-4">
-        {/* Customer Selector Card */}
+        {/* Customer Selector Card (High-Volume Searchable Combobox & Find Customer Modal) */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
-          className="app-card p-4 transition-colors"
+          className="app-card p-4 transition-colors relative z-20"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-2 text-slate-800 dark:text-white font-extrabold text-xs uppercase tracking-wider">
-              <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-cyan-400"></span>
-              <User className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
-              <span>Customer</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsAddingCustomer(!isAddingCustomer)}
-              className="px-2.5 py-1 text-xs font-bold rounded-lg border border-blue-200 dark:border-blue-800/80 text-blue-600 dark:text-cyan-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition cursor-pointer"
-            >
-              {isAddingCustomer ? 'Cancel' : '+ New Customer'}
-            </button>
-          </div>
-
-          {isAddingCustomer ? (
-            <form onSubmit={handleCreateQuickCustomer} className="space-y-2 text-xs">
-              <input
-                type="text"
-                placeholder="Customer Name *"
-                value={quickCustomerName}
-                onChange={(e) => setQuickCustomerName(e.target.value)}
-                className="app-input w-full px-3 py-2 text-xs"
-                required
-              />
-              <input
-                type="text"
-                placeholder="Mobile / Phone *"
-                value={quickCustomerPhone}
-                onChange={(e) => setQuickCustomerPhone(e.target.value)}
-                className="app-input w-full px-3 py-2 text-xs"
-                required
-              />
-              <button
-                type="submit"
-                className="w-full py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-800 text-white border border-purple-400/40 dark:border-purple-400/50 rounded-xl text-xs font-bold shadow-md shadow-purple-600/25 dark:shadow-[0_0_14px_rgba(147,51,234,0.3)] transition cursor-pointer active:scale-95"
-              >
-                Save &amp; Select Customer
-              </button>
-            </form>
-          ) : (
-            <select
-              value={selectedCustomerId || ''}
-              onChange={(e) => setSelectedCustomerId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full px-3 py-2.5 bg-slate-50 dark:bg-purple-500/20 border border-slate-200 dark:border-purple-400/40 rounded-xl text-xs font-semibold text-slate-800 dark:text-purple-200 hover:bg-slate-100 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] focus:bg-white dark:focus:bg-purple-500/25 focus:border-blue-600 dark:focus:border-purple-400 outline-none transition cursor-pointer"
-            >
-              <option value="" className="dark:bg-[#120726] dark:text-purple-100">Walk-in Customer (Standard)</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id} className="dark:bg-[#120726] dark:text-purple-100">
-                  {c.name} ({c.phone})
-                </option>
-              ))}
-            </select>
-          )}
+          <CustomerPicker
+            customers={customers}
+            selectedCustomerId={selectedCustomerId}
+            onSelectCustomer={(customerId) => {
+              setSelectedCustomerId(customerId);
+              focusScannerInput(continuousScan);
+            }}
+            onCustomerCreated={(newCustomer) => {
+              setCustomers((prev) => [newCustomer, ...prev]);
+              setSelectedCustomerId(newCustomer.id);
+            }}
+            currencySymbol={currencySymbol}
+            onModalOpenChange={setIsCustomerModalOpen}
+          />
         </motion.div>
 
         {/* Payment Calculation & Tender Box */}
@@ -2064,7 +2110,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     {/* Dedicated Footer Branding */}
     <div className="text-center py-2 text-[11px] text-slate-400 dark:text-slate-500 select-none">
-      Designed &amp; Developed by <span className="text-purple-600 dark:text-purple-400 font-semibold">SarbaazSoft</span> © 2026
+      Designed &amp; Developed by <span className="text-slate-700 dark:text-slate-200 font-semibold">SarbaazSoft</span> © 2026
     </div>
 
       {/* ADMIN OVERRIDE MODAL FOR MIN SALE PRICE VIOLATION */}

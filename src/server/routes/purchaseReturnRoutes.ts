@@ -36,7 +36,7 @@ router.get('/verify-purchase/:purchaseNumber', requireAuth, requireAdmin, async 
 
     const purRes = await pgClient.query(
       `SELECT p.*, s.name as supplier_official_name, s.phone as supplier_phone,
-              s.email as supplier_email, s.address as supplier_address, s.balance as supplier_balance
+              s.email as supplier_email, s.balance as supplier_balance
        FROM purchases p
        LEFT JOIN suppliers s ON p.supplier_id = s.id
        WHERE UPPER(p.purchase_number) = UPPER($1)`,
@@ -102,7 +102,6 @@ router.get('/verify-purchase/:purchaseNumber', requireAuth, requireAdmin, async 
         supplierName: purchase.supplier_official_name || purchase.supplier_name,
         supplierPhone: purchase.supplier_phone || '',
         supplierEmail: purchase.supplier_email || '',
-        supplierAddress: purchase.supplier_address || '',
         supplierBalance: parseFloat(purchase.supplier_balance || '0'),
         items,
       },
@@ -166,7 +165,6 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res: Response) => {
               u.name as created_by_name,
               s.phone as supplier_phone,
               s.email as supplier_email,
-              s.address as supplier_address,
               s.balance as supplier_balance,
               p.purchase_number as original_purchase_number,
               p.purchase_date as original_purchase_date

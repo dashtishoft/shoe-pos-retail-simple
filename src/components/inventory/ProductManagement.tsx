@@ -22,7 +22,7 @@ import { BarcodeGeneratorTool } from './BarcodeGeneratorTool.tsx';
 import { SideEndBoxLabelModal } from './SideEndBoxLabelModal.tsx';
 import { StockAdjustModal } from './StockAdjustModal.tsx';
 import { BarcodeSvg } from '../common/BarcodeSvg.tsx';
-import { formatStockPrice } from '../../utils/priceFormat.ts';
+import { formatStockPrice, getProductRetailPrice, getProductMinFloorPrice } from '../../utils/priceFormat.ts';
 import { useTheme } from '../../context/ThemeContext.tsx';
 import { BrandLogo } from '../common/BrandLogo.tsx';
 import { StatCard, triggerStatRecount } from '../common/StatCard.tsx';
@@ -30,13 +30,17 @@ import { StatCard, triggerStatRecount } from '../common/StatCard.tsx';
 interface ProductManagementProps {
   currentUser: any;
   companySettings: any;
-  initialBrandId?: number | '';
-  initialCategoryId?: number | '';
+  initialBrand?: string;
+  initialCategory?: string;
+  initialBrandId?: string | number | '';
+  initialCategoryId?: string | number | '';
 }
 
 export const ProductManagement: React.FC<ProductManagementProps> = ({
   currentUser,
   companySettings,
+  initialBrand,
+  initialCategory,
   initialBrandId,
   initialCategoryId,
 }) => {
@@ -48,8 +52,10 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
   const [categories, setCategories] = useState<any[]>([]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState<number | ''>(initialBrandId || '');
-  const [selectedCategory, setSelectedCategory] = useState<number | ''>(initialCategoryId || '');
+  const initialBrandStr = initialBrand || (typeof initialBrandId === 'string' ? initialBrandId : '') || '';
+  const initialCatStr = initialCategory || (typeof initialCategoryId === 'string' ? initialCategoryId : '') || '';
+  const [selectedBrand, setSelectedBrand] = useState<string>(initialBrandStr);
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCatStr);
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -69,10 +75,55 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
   };
 
   const currencySymbol = companySettings?.currency_symbol || companySettings?.currencySymbol || 'Rs.';
+  const rawPricingMode = String(companySettings?.pricing_mode || companySettings?.pricingMode || 'NEGOTIABLE').toUpperCase();
+  const isFixedPolicy = rawPricingMode === 'FIXED';
   const isAdmin = currentUser?.role === 'ADMIN';
 
   useEffect(() => {
     loadFilterData();
+
+    // Check for pending edit or barcode actions from Quick Price search bar
+    const handleEditEvent = (e: any) => {
+      const product = e.detail?.product;
+      if (product) {
+        setEditingProduct(product);
+        setIsFormModalOpen(true);
+      }
+    };
+
+    const handleBarcodeEvent = (e: any) => {
+      const product = e.detail?.product;
+      if (product) {
+        handleOpenBarcodeTool(product);
+      }
+    };
+
+    window.addEventListener('product:edit', handleEditEvent);
+    window.addEventListener('inventory:print-barcode', handleBarcodeEvent);
+
+    const pendingEditStr = sessionStorage.getItem('pending_edit_product');
+    if (pendingEditStr) {
+      try {
+        const prod = JSON.parse(pendingEditStr);
+        sessionStorage.removeItem('pending_edit_product');
+        setEditingProduct(prod);
+        setIsFormModalOpen(true);
+      } catch {}
+    }
+
+    const pendingBarcodeStr = sessionStorage.getItem('pending_barcode_product');
+    if (pendingBarcodeStr) {
+      try {
+        const prod = JSON.parse(pendingBarcodeStr);
+        sessionStorage.removeItem('pending_barcode_product');
+        handleOpenBarcodeTool(prod);
+      } catch {}
+    }
+
+    return () => {
+      window.removeEventListener('product:edit', handleEditEvent);
+      window.removeEventListener('inventory:print-barcode', handleBarcodeEvent);
+    };
   }, []);
 
   useEffect(() => {
@@ -80,13 +131,17 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
   }, [selectedBrand, selectedCategory, lowStockFilter]);
 
   useEffect(() => {
-    if (initialBrandId !== undefined) {
-      setSelectedBrand(initialBrandId || '');
+    if (initialBrand !== undefined) {
+      setSelectedBrand(initialBrand || '');
+    } else if (initialBrandId !== undefined) {
+      setSelectedBrand(String(initialBrandId || ''));
     }
-    if (initialCategoryId !== undefined) {
-      setSelectedCategory(initialCategoryId || '');
+    if (initialCategory !== undefined) {
+      setSelectedCategory(initialCategory || '');
+    } else if (initialCategoryId !== undefined) {
+      setSelectedCategory(String(initialCategoryId || ''));
     }
-  }, [initialBrandId, initialCategoryId]);
+  }, [initialBrand, initialCategory, initialBrandId, initialCategoryId]);
 
   const loadFilterData = async () => {
     try {
@@ -110,8 +165,8 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
     try {
       const res = await api.products.list({
         search: searchTerm.trim() || undefined,
-        brandId: selectedBrand || undefined,
-        categoryId: selectedCategory || undefined,
+        brand: selectedBrand || undefined,
+        category: selectedCategory || undefined,
         lowStockOnly: lowStockFilter || undefined,
       });
       setProducts(res.products || []);
@@ -148,7 +203,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
 
   const totalStockPairs = products.reduce((acc, p) => acc + (Number(p.totalStock) || 0), 0);
   const lowStockCount = products.filter((p) => (Number(p.totalStock) || 0) <= (Number(p.lowStockLimit) || 5)).length;
-  const totalValuation = products.reduce((acc, p) => acc + (Number(p.totalStock) || 0) * (Number(p.purchasePrice) || 0), 0);
+  const totalValuation = products.reduce((acc, p) => acc + (Number(p.totalStock) || 0) * (Number(p.costPrice ?? p.cost_price) || 0), 0);
 
   return (
     <div className="space-y-4 p-4 max-w-7xl mx-auto">
@@ -287,15 +342,16 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
 
         <select
           value={selectedBrand}
-          onChange={(e) => setSelectedBrand(e.target.value ? Number(e.target.value) : '')}
+          onChange={(e) => setSelectedBrand(e.target.value)}
           className="px-3.5 py-2.5 bg-slate-50 dark:bg-purple-500/20 border border-slate-200 dark:border-purple-400/40 text-slate-800 dark:text-purple-200 hover:bg-slate-100 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] rounded-xl outline-none font-medium focus:border-blue-500 dark:focus:border-purple-400 cursor-pointer transition"
         >
           <option value="">All Brands</option>
           {brands.map((b) => {
-            const isLocal = b.name?.trim().toLowerCase() === 'local';
+            const bName = typeof b === 'string' ? b : b.name;
+            const isLocal = bName?.trim().toLowerCase() === 'local';
             return (
-              <option key={b.id} value={b.id} className="dark:bg-[#120726] dark:text-purple-100">
-                {b.name} {isLocal ? '(Default)' : ''}
+              <option key={bName} value={bName} className="dark:bg-[#120726] dark:text-purple-100">
+                {bName} {isLocal ? '(Default)' : ''}
               </option>
             );
           })}
@@ -303,15 +359,18 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
 
         <select
           value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : '')}
+          onChange={(e) => setSelectedCategory(e.target.value)}
           className="px-3.5 py-2.5 bg-slate-50 dark:bg-purple-500/20 border border-slate-200 dark:border-purple-400/40 text-slate-800 dark:text-purple-200 hover:bg-slate-100 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] rounded-xl outline-none font-medium focus:border-blue-500 dark:focus:border-purple-400 cursor-pointer transition"
         >
           <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id} className="dark:bg-[#120726] dark:text-purple-100">
-              {c.name}
-            </option>
-          ))}
+          {categories.map((c) => {
+            const cName = typeof c === 'string' ? c : c.name;
+            return (
+              <option key={cName} value={cName} className="dark:bg-[#120726] dark:text-purple-100">
+                {cName}
+              </option>
+            );
+          })}
         </select>
 
         <button
@@ -380,8 +439,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                 <th className="py-3.5 px-4">Article &amp; Identifiers</th>
                 <th className="py-3.5 px-3">Brand &amp; Category</th>
                 <th className="py-3.5 px-4">Barcode (Click to Print)</th>
-                {isAdmin && <th className="py-3.5 px-3 text-right">Purchase Price</th>}
-                <th className="py-3.5 px-3 text-right">Max Price (M.R.P.)</th>
+                <th className="py-3.5 px-3 text-right" title="Product cost price and saved selling price according to pricing policy">Pricing &amp; Cost</th>
                 <th className="py-3.5 px-3 text-center">Total Stock</th>
                 <th className="py-3.5 px-4 text-center">Actions</th>
               </tr>
@@ -389,7 +447,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <RefreshCw className="w-6 h-6 animate-spin text-blue-600 dark:text-purple-400 mx-auto" />
                       <p className="font-medium text-xs">Loading inventory...</p>
@@ -398,7 +456,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     No products found matching filters.
                   </td>
                 </tr>
@@ -511,24 +569,43 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                         </div>
                       </td>
 
-                      {/* Purchase Cost (Admin only) */}
-                      {isAdmin && (
-                        <td className="py-3.5 px-3 text-right font-mono text-slate-600 dark:text-slate-300 font-semibold text-xs">
-                          {currencySymbol} {formatStockPrice(p.purchasePrice)}
-                        </td>
-                      )}
-
-                      {/* Max Price (M.R.P.) with Auto-Min Subtext */}
+                      {/* Cost Price & Selling Price with Policy Badge */}
                       <td className="py-3.5 px-3 text-right">
                         <div className="font-mono font-bold text-slate-900 dark:text-white text-xs">
-                          {currencySymbol} {formatStockPrice(p.maxSalePrice ?? p.minSalePrice)}
+                          {currencySymbol} {formatStockPrice(p.costPrice ?? p.cost_price)}
+                          <span className="text-[10px] text-slate-400 font-normal ml-1">cost</span>
                         </div>
-                        <div
-                          className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5"
-                          title="Auto-calculated Cost + Min Margin floor"
-                        >
-                          Min: {currencySymbol} {formatStockPrice(p.minSalePrice)}
-                        </div>
+                        {(() => {
+                          const policy = String(p.marginType || p.margin_type || (p.salePrice ? 'FIXED' : (companySettings?.pricing_mode || 'FIXED'))).toUpperCase();
+                          const isFixed = policy === 'FIXED';
+                          const retailPrice = getProductRetailPrice(p, companySettings);
+                          const minFloor = getProductMinFloorPrice(p, companySettings);
+
+                          return isFixed ? (
+                            <div className="flex items-center justify-end gap-1 mt-0.5">
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 uppercase">
+                                Fixed
+                              </span>
+                              <span className="text-[11px] font-mono font-bold text-purple-600 dark:text-purple-400">
+                                {currencySymbol} {formatStockPrice(retailPrice)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-end mt-0.5">
+                              <div className="flex items-center gap-1">
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 uppercase">
+                                  Negotiable
+                                </span>
+                                <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                  {currencySymbol} {formatStockPrice(retailPrice)}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-semibold">
+                                Floor: {currencySymbol} {formatStockPrice(minFloor)}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Total Stock */}

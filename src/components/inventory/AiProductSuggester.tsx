@@ -26,13 +26,13 @@ import type {
 interface AiProductSuggesterProps {
   imageUrl: string;
   onImageUrlChange: (url: string) => void;
-  brands: Brand[];
-  categories: Category[];
-  onSelectBrand: (brandId: number) => void;
-  onSelectCategory: (categoryId: number) => void;
+  brands?: Brand[] | string[] | any[];
+  categories?: Category[] | string[] | any[];
+  onSelectBrand: (brandName: string) => void;
+  onSelectCategory: (categoryName: string) => void;
   onSetTitle: (title: string) => void;
-  onBrandsUpdated?: (updatedBrands: Brand[]) => void;
-  onCategoriesUpdated?: (updatedCategories: Category[]) => void;
+  onBrandsUpdated?: (updatedBrands: any[]) => void;
+  onCategoriesUpdated?: (updatedCategories: any[]) => void;
 }
 
 // Sample shoe images including footwear categories and non-shoe guardrail alert test
@@ -239,143 +239,25 @@ export const AiProductSuggester: React.FC<AiProductSuggesterProps> = ({
   };
 
   // Apply Brand Handler
-  const handleApplyBrand = async (brandData?: any) => {
+  const handleApplyBrand = (brandData?: any) => {
     const data = brandData || suggestion?.brand;
     if (!data) return;
 
-    // If it's an existing brand with matchedId
-    if (data.isExisting && data.matchedId) {
-      onSelectBrand(data.matchedId);
-      setAppliedBrand(true);
-      triggerNotice(`Applied Brand: "${data.matchedName}"`);
-      return;
-    }
-
-    // If Brand is unknown
-    if (data.isUnknown) {
-      const unbranded = brands.find(
-        (b) => b.name.toLowerCase() === 'unbranded' || b.name.toLowerCase() === 'generic'
-      );
-      if (unbranded) {
-        onSelectBrand(unbranded.id);
-        setAppliedBrand(true);
-        triggerNotice(`Brand marked as "${unbranded.name}"`);
-      } else {
-        triggerNotice('Brand is not clearly visible in this image. Please select manually.');
-      }
-      return;
-    }
-
-    // If it's a new brand, create it in database
-    const brandNameToCreate = data.suggestedName.trim();
-    if (!brandNameToCreate) return;
-
-    setIsCreatingBrand(true);
-    try {
-      // Check if it exists in local list first
-      const existing = brands.find((b) => b.name.toLowerCase() === brandNameToCreate.toLowerCase());
-      if (existing) {
-        onSelectBrand(existing.id);
-        setAppliedBrand(true);
-        triggerNotice(`Selected existing brand: "${existing.name}"`);
-        setIsCreatingBrand(false);
-        return;
-      }
-
-      const res = await api.brandCategory.createBrand(brandNameToCreate);
-      const newBrand = res.brand || { id: res.id, name: brandNameToCreate };
-
-      // Refresh brands list
-      const freshBrandsRes = await api.brandCategory.getBrands();
-      if (onBrandsUpdated && freshBrandsRes.brands) {
-        onBrandsUpdated(freshBrandsRes.brands);
-      }
-
-      onSelectBrand(newBrand.id);
-      setAppliedBrand(true);
-      triggerNotice(`Created & applied new brand: "${brandNameToCreate}"`);
-    } catch (err: any) {
-      // If error was "Brand with this name already exists", re-fetch
-      try {
-        const freshBrandsRes = await api.brandCategory.getBrands();
-        if (onBrandsUpdated && freshBrandsRes.brands) {
-          onBrandsUpdated(freshBrandsRes.brands);
-        }
-        const existing = freshBrandsRes.brands?.find(
-          (b: any) => b.name.toLowerCase() === brandNameToCreate.toLowerCase()
-        );
-        if (existing) {
-          onSelectBrand(existing.id);
-          setAppliedBrand(true);
-          triggerNotice(`Selected existing brand: "${existing.name}"`);
-          return;
-        }
-      } catch (_) {}
-      triggerNotice(`Failed to create brand: ${err.message || err}`);
-    } finally {
-      setIsCreatingBrand(false);
-    }
+    const brandName = data.matchedName || data.suggestedName || (data.isUnknown ? 'Local' : 'Local');
+    onSelectBrand(brandName);
+    setAppliedBrand(true);
+    triggerNotice(`Applied Brand: "${brandName}"`);
   };
 
   // Apply Category Handler
-  const handleApplyCategory = async (catData?: any) => {
+  const handleApplyCategory = (catData?: any) => {
     const data = catData || suggestion?.category;
     if (!data) return;
 
-    // If it's an existing category with matchedId
-    if (data.isExisting && data.matchedId) {
-      onSelectCategory(data.matchedId);
-      setAppliedCategory(true);
-      triggerNotice(`Applied Category: "${data.matchedName}"`);
-      return;
-    }
-
-    // If it's a new category, create it in database
-    const catNameToCreate = data.suggestedName.trim();
-    if (!catNameToCreate) return;
-
-    setIsCreatingCategory(true);
-    try {
-      const existing = categories.find((c) => c.name.toLowerCase() === catNameToCreate.toLowerCase());
-      if (existing) {
-        onSelectCategory(existing.id);
-        setAppliedCategory(true);
-        triggerNotice(`Selected existing category: "${existing.name}"`);
-        setIsCreatingCategory(false);
-        return;
-      }
-
-      const res = await api.brandCategory.createCategory(catNameToCreate);
-      const newCat = res.category || { id: res.id, name: catNameToCreate };
-
-      const freshCatsRes = await api.brandCategory.getCategories();
-      if (onCategoriesUpdated && freshCatsRes.categories) {
-        onCategoriesUpdated(freshCatsRes.categories);
-      }
-
-      onSelectCategory(newCat.id);
-      setAppliedCategory(true);
-      triggerNotice(`Created & applied new category: "${catNameToCreate}"`);
-    } catch (err: any) {
-      try {
-        const freshCatsRes = await api.brandCategory.getCategories();
-        if (onCategoriesUpdated && freshCatsRes.categories) {
-          onCategoriesUpdated(freshCatsRes.categories);
-        }
-        const existing = freshCatsRes.categories?.find(
-          (c: any) => c.name.toLowerCase() === catNameToCreate.toLowerCase()
-        );
-        if (existing) {
-          onSelectCategory(existing.id);
-          setAppliedCategory(true);
-          triggerNotice(`Selected existing category: "${existing.name}"`);
-          return;
-        }
-      } catch (_) {}
-      triggerNotice(`Failed to create category: ${err.message || err}`);
-    } finally {
-      setIsCreatingCategory(false);
-    }
+    const catName = data.matchedName || data.suggestedName || 'Casual Shoes';
+    onSelectCategory(catName);
+    setAppliedCategory(true);
+    triggerNotice(`Applied Category: "${catName}"`);
   };
 
   // Apply Title Handler
@@ -388,7 +270,7 @@ export const AiProductSuggester: React.FC<AiProductSuggesterProps> = ({
   };
 
   // Apply All Handler
-  const handleApplyAll = async () => {
+  const handleApplyAll = () => {
     if (!suggestion) return;
 
     // Apply title first
@@ -399,12 +281,12 @@ export const AiProductSuggester: React.FC<AiProductSuggesterProps> = ({
 
     // Apply brand
     if (suggestion.brand) {
-      await handleApplyBrand(suggestion.brand);
+      handleApplyBrand(suggestion.brand);
     }
 
     // Apply category
     if (suggestion.category) {
-      await handleApplyCategory(suggestion.category);
+      handleApplyCategory(suggestion.category);
     }
 
     triggerNotice('Applied All suggestions: Brand, Category, and Title!');

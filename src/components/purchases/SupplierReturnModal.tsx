@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api.ts';
 import { formatStockPrice } from '../../utils/priceFormat.ts';
+import { SupplierPicker } from './SupplierPicker.tsx';
 
 interface ReturnCartonItem {
   productId: number;
@@ -233,22 +234,23 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
       return;
     }
 
-    const unitPrice = parseFloat(product.purchase_price ?? product.purchasePrice ?? '0');
+    const unitPrice = parseFloat(String(product.costPrice ?? product.cost_price ?? '0'));
     const defaultPairsPerCarton = 12;
     const defaultCartonQty = 1;
     const totalPairs = defaultCartonQty * defaultPairsPerCarton;
+    const availStock = product.totalStock ?? product.total_stock ?? 0;
 
     const newItem: ReturnCartonItem = {
       productId: product.id,
       article: product.article || product.name,
       sku: product.sku,
       barcode: product.barcode,
-      currentStock: product.total_stock ?? 0,
+      currentStock: availStock,
       cartonQuantity: defaultCartonQty,
       pairsPerCarton: defaultPairsPerCarton,
-      totalPairs: Math.min(product.total_stock ?? 0, totalPairs),
+      totalPairs: Math.min(availStock, totalPairs),
       unitPurchasePrice: unitPrice,
-      subtotal: Math.round(Math.min(product.total_stock ?? 0, totalPairs) * unitPrice * 100) / 100,
+      subtotal: Math.round(Math.min(availStock, totalPairs) * unitPrice * 100) / 100,
       defectType: 'Defective Sole / Cracked Outsole',
     };
 
@@ -418,26 +420,33 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
           {/* Top Section: Supplier & Purchase Invoice */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Supplier Selector */}
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 relative z-20">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1">
                 <Building2 className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                 <span>Supplier / Manufacturer *</span>
               </label>
-              <select
-                value={selectedSupplierId}
-                onChange={(e) =>
-                  handleSupplierChange(e.target.value ? parseInt(e.target.value, 10) : '')
-                }
-                className="w-full text-xs font-medium border border-slate-300 dark:border-purple-400/40 rounded-xl px-3 py-2.5 bg-white dark:bg-purple-500/20 text-slate-900 dark:text-purple-200 hover:bg-slate-50 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] focus:ring-2 focus:ring-purple-500 focus:outline-hidden cursor-pointer"
-              >
-                <option value="" className="dark:bg-[#120726] dark:text-purple-100">-- Select Supplier to Debit --</option>
-                {suppliers.map((sup) => (
-                  <option key={sup.id} value={sup.id} className="dark:bg-[#120726] dark:text-purple-100">
-                    {sup.name} (Payable: {currencySymbol}{' '}
-                    {formatStockPrice(sup.net_payable_balance ?? sup.balance ?? 0)})
-                  </option>
-                ))}
-              </select>
+              <SupplierPicker
+                suppliers={suppliers}
+                selectedSupplierId={selectedSupplierId}
+                supplierName={supplierName}
+                onSelectSupplier={(supId, supName) => {
+                  if (supId) {
+                    handleSupplierChange(supId);
+                  } else {
+                    setSelectedSupplierId('');
+                    setSupplierName(supName);
+                    setSupplierBalance(0);
+                  }
+                }}
+                onSupplierCreated={(newSup) => {
+                  setSuppliers((prev) => [newSup, ...prev]);
+                  setSelectedSupplierId(newSup.id);
+                  setSupplierName(newSup.name);
+                  setSupplierBalance(0);
+                }}
+                currencySymbol={currencySymbol}
+                placeholder="Search Supplier to Debit (Type name, phone, #ID...)"
+              />
               {selectedSupplierId && (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center space-x-1">
                   <span>Current Payable Balance:</span>
@@ -609,10 +618,10 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
                         </div>
                         <div className="text-right">
                           <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#131D33] font-mono text-[11px] text-slate-700 dark:text-slate-300 font-semibold block">
-                            Stock: {prod.total_stock} prs
+                            Stock: {prod.totalStock ?? prod.total_stock ?? 0} prs
                           </span>
                           <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 font-mono">
-                            Cost: {currencySymbol} {formatStockPrice(prod.purchase_price || 0)}
+                            Cost: {currencySymbol} {formatStockPrice(prod.costPrice ?? prod.cost_price ?? 0)}
                           </span>
                         </div>
                       </div>

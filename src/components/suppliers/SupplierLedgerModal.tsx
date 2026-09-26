@@ -152,12 +152,6 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                       {supplier.email}
                     </span>
                   )}
-                  {supplier?.address && (
-                    <span className="flex items-center">
-                      <MapPin className="w-3 h-3 mr-1" />
-                      {supplier.address}
-                    </span>
-                  )}
                 </div>
               </div>
             </div>

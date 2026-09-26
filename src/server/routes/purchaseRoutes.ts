@@ -54,7 +54,7 @@ router.get('/', requireAuth, forbidCashier, requireAdmin, async (req, res: Respo
       SELECT p.*,
              (p.total_amount - COALESCE(p.paid_amount, 0))::numeric as balance_due,
              u.name as created_by_name,
-             s.name as supplier_official_name, s.phone as supplier_phone, s.url as supplier_url, s.email as supplier_email,
+             s.name as supplier_official_name, s.phone as supplier_phone, s.email as supplier_email,
              (SELECT COUNT(*) FROM purchase_items pi WHERE pi.purchase_id = p.id) as item_count
       FROM purchases p
       LEFT JOIN users u ON p.created_by = u.id
@@ -93,7 +93,7 @@ router.get('/:id', requireAuth, forbidCashier, requireAdmin, async (req, res: Re
       `SELECT p.*,
               (p.total_amount - COALESCE(p.paid_amount, 0))::numeric as balance_due,
               u.name as created_by_name,
-              s.name as supplier_official_name, s.phone as supplier_phone, s.url as supplier_url, s.email as supplier_email, s.address as supplier_address
+              s.name as supplier_official_name, s.phone as supplier_phone, s.email as supplier_email
        FROM purchases p
        LEFT JOIN users u ON p.created_by = u.id
        LEFT JOIN suppliers s ON p.supplier_id = s.id
@@ -237,16 +237,10 @@ router.post('/', requireAuth, forbidCashier, requireAdmin, async (req: Authentic
       const subtotal = Math.round(qty * unitPrice * 100) / 100;
       totalAmount = Math.round((totalAmount + subtotal) * 100) / 100;
 
-      // Update product stock and update purchase_price along with smart upward rounded selling boundaries
-      const pricing = calculateAutomaticPricing({
-        costPrice: unitPrice,
-        minProfitMargin: minMargin,
-        maxProfitMargin: maxMargin,
-      });
-
+      // Update product stock and procurement cost price (Selling prices are auto-calculated dynamically in real time)
       await pgClient.query(
-        'UPDATE products SET total_stock = $1, purchase_price = $2, min_sale_price = $3, max_sale_price = $4, updated_at = NOW() WHERE id = $5',
-        [newStock, unitPrice, pricing.minProfitPrice, pricing.maxProfitPrice, prod.id]
+        'UPDATE products SET total_stock = $1, cost_price = $2, updated_at = NOW() WHERE id = $3',
+        [newStock, unitPrice, prod.id]
       );
 
       validatedItems.push({

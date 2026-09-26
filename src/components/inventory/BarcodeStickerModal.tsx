@@ -98,7 +98,7 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
   const brandName = product.brandName || product.brand_name || '';
   const categoryName = product.categoryName || product.category_name || '';
   const articleName = product.article || product.name || 'Shoe';
-  const retailPrice = formatStockPrice(getProductRetailPrice(product));
+  const retailPrice = formatStockPrice(getProductRetailPrice(product, companySettings));
 
   const handleMatchStockQuantity = () => {
     const targetCopies = currentStock > 0 ? currentStock : 1;

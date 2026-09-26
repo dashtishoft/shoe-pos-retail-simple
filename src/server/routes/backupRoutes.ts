@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { pgClient, dbInfo, isStandardPostgres } from '../../db/index.ts';
+import { ensureDatabaseSchema } from '../../db/schemaInit.ts';
 import { requireAuth, requireAdmin } from '../auth.ts';
 import type { AuthenticatedRequest } from '../auth.ts';
 
@@ -12,8 +13,6 @@ const router = Router();
 const RESTORE_TABLE_ORDER = [
   'company_settings',
   'users',
-  'brands',
-  'categories',
   'suppliers',
   'customers',
   'products',
@@ -30,8 +29,6 @@ const RESTORE_TABLE_ORDER = [
 const ALL_TABLES = [
   'company_settings',
   'users',
-  'brands',
-  'categories',
   'products',
   'customers',
   'suppliers',
@@ -202,8 +199,6 @@ router.post('/restore', requireAuth, requireAdmin, async (req: AuthenticatedRequ
           products,
           customers,
           suppliers,
-          categories,
-          brands,
           company_settings
         CASCADE;
       `);
@@ -236,6 +231,22 @@ router.post('/restore', requireAuth, requireAdmin, async (req: AuthenticatedRequ
 
           // Strip any fields that don't belong to schema if necessary, or sanitize
           const cleanRow = { ...row };
+          if (tableName === 'products') {
+            if ((cleanRow.cost_price === undefined || cleanRow.cost_price === null) && cleanRow.purchase_price !== undefined) {
+              cleanRow.cost_price = cleanRow.purchase_price;
+            }
+            if (!cleanRow.brand && cleanRow.brand_name) cleanRow.brand = cleanRow.brand_name;
+            if (!cleanRow.brand) cleanRow.brand = 'Local';
+            if (!cleanRow.category && cleanRow.category_name) cleanRow.category = cleanRow.category_name;
+            if (!cleanRow.category) cleanRow.category = 'Casual Shoes';
+            delete cleanRow.brand_id;
+            delete cleanRow.category_id;
+            delete cleanRow.brand_name;
+            delete cleanRow.category_name;
+            delete cleanRow.purchase_price;
+            delete cleanRow.min_sale_price;
+            delete cleanRow.max_sale_price;
+          }
 
           // Convert any date strings or nested objects cleanly
           const keys = Object.keys(cleanRow);
@@ -359,14 +370,15 @@ router.post('/load-dummy-data', requireAuth, requireAdmin, async (_req: Authenti
     const sql = fs.readFileSync(sqlPath, 'utf-8');
     await pgClient.waitReady;
     await pgClient.exec(sql);
+    await ensureDatabaseSchema();
 
     const salesCount = await pgClient.query('SELECT COUNT(*) as c FROM sales').catch(() => ({ rows: [{ c: '0' }] }));
     const purCount = await pgClient.query('SELECT COUNT(*) as c FROM purchases').catch(() => ({ rows: [{ c: '0' }] }));
     const prodCount = await pgClient.query('SELECT COUNT(*) as c FROM products').catch(() => ({ rows: [{ c: '0' }] }));
     const retCount = await pgClient.query('SELECT COUNT(*) as c FROM returns').catch(() => ({ rows: [{ c: '0' }] }));
     const custCount = await pgClient.query('SELECT COUNT(*) as c FROM customers').catch(() => ({ rows: [{ c: '0' }] }));
-    const brandCount = await pgClient.query('SELECT COUNT(*) as c FROM brands').catch(() => ({ rows: [{ c: '0' }] }));
-    const catCount = await pgClient.query('SELECT COUNT(*) as c FROM categories').catch(() => ({ rows: [{ c: '0' }] }));
+    const brandCount = await pgClient.query('SELECT COUNT(DISTINCT brand) as c FROM products WHERE brand IS NOT NULL AND TRIM(brand) != \'\'').catch(() => ({ rows: [{ c: '0' }] }));
+    const catCount = await pgClient.query('SELECT COUNT(DISTINCT category) as c FROM products WHERE category IS NOT NULL AND TRIM(category) != \'\'').catch(() => ({ rows: [{ c: '0' }] }));
 
     res.json({
       success: true,
@@ -398,6 +410,7 @@ router.post('/import-sql', requireAuth, requireAdmin, async (req: AuthenticatedR
 
     await pgClient.waitReady;
     await pgClient.exec(sql);
+    await ensureDatabaseSchema();
 
     const salesCount = await pgClient.query('SELECT COUNT(*) as c FROM sales').catch(() => ({ rows: [{ c: '0' }] }));
     const purCount = await pgClient.query('SELECT COUNT(*) as c FROM purchases').catch(() => ({ rows: [{ c: '0' }] }));

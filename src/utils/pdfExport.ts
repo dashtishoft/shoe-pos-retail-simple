@@ -358,7 +358,7 @@ export function exportStickersToPdf(
     const size = product.size ? String(product.size).trim() : '';
     const sku = String(product.sku || '').substring(0, 18);
     const barcode = String(product.barcode || sku);
-    const price = formatStockPrice(getProductRetailPrice(product));
+    const price = formatStockPrice(getProductRetailPrice(product, companySettings));
 
     const showStore = options.showStore !== false;
     const showBrand = options.showBrand !== false;
@@ -528,7 +528,7 @@ export function exportBatchStickersToPdf(
         const name = String(prod.article || prod.name || '').substring(0, 22);
         const sku = String(prod.sku || '').substring(0, 18);
         const barcode = String(prod.barcode || sku);
-        const price = formatStockPrice(getProductRetailPrice(prod));
+        const price = formatStockPrice(getProductRetailPrice(prod, companySettings));
         const barcodeData = generateBarcodeDataUrl(barcode);
 
         const centerX = x + labelWidth / 2;
@@ -592,7 +592,7 @@ export function exportBatchStickersToPdf(
         const name = String(prod.article || prod.name || '').substring(0, 24);
         const sku = String(prod.sku || '').substring(0, 18);
         const barcode = String(prod.barcode || sku);
-        const price = formatStockPrice(getProductRetailPrice(prod));
+        const price = formatStockPrice(getProductRetailPrice(prod, companySettings));
         const barcodeData = generateBarcodeDataUrl(barcode);
 
         let curY = 4;
@@ -827,7 +827,7 @@ export function exportStickersToImage(
     const name = String(product.article || product.name || '').substring(0, 24);
     const sku = String(product.sku || '');
     const barcode = String(product.barcode || sku);
-    const price = formatStockPrice(getProductRetailPrice(product));
+    const price = formatStockPrice(getProductRetailPrice(product, companySettings));
 
     const showStore = options.showStore !== false;
     const showBrand = options.showBrand !== false;
@@ -1075,7 +1075,7 @@ export function exportSideEndBoxLabelToPdf(
     const article = String(product.article || product.name || 'Shoe Article').toUpperCase();
     const sku = String(product.sku || '');
     const barcode = String(product.barcode || sku);
-    const price = formatStockPrice(getProductRetailPrice(product));
+    const price = formatStockPrice(getProductRetailPrice(product, companySettings));
     const barcodeData = generateBarcodeDataUrl(barcode);
 
     const pdf = new jsPDF({
@@ -1308,7 +1308,7 @@ export function exportSideEndBoxLabelToImage(
     const article = String(product.article || product.name || 'SHOE ARTICLE').toUpperCase();
     const sku = String(product.sku || '');
     const barcode = String(product.barcode || sku);
-    const price = formatStockPrice(getProductRetailPrice(product));
+    const price = formatStockPrice(getProductRetailPrice(product, companySettings));
 
     if (isPortrait) {
       // Header Banner

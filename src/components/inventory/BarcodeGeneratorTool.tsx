@@ -103,7 +103,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
     initialSelectedProduct?.brandName || storeName
   );
   const [customPrice, setCustomPrice] = useState<number | string>(
-    cleanStockPriceInput(getProductRetailPrice(initialSelectedProduct) || initialSelectedProduct?.minSalePrice || '4999')
+    cleanStockPriceInput(getProductRetailPrice(initialSelectedProduct, companySettings) || initialSelectedProduct?.minSalePrice || '4999')
   );
   const [customBarcode, setCustomBarcode] = useState(
     initialSelectedProduct?.barcode || '0108923001018'
@@ -697,7 +697,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                               </td>
 
                               <td className="py-2 px-3 text-right font-mono font-semibold text-gray-800">
-                                {currencySymbol} {formatStockPrice(getProductRetailPrice(p))}
+                                {currencySymbol} {formatStockPrice(getProductRetailPrice(p, companySettings))}
                               </td>
 
                               <td className="py-2 px-3 text-center">
@@ -1143,7 +1143,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                       <div className="flex justify-between items-center text-[10px] font-bold border-t border-gray-200 pt-1 mt-0.5">
                         <span className="text-gray-500">PRICE:</span>
                         <span className="text-xs text-black font-mono font-black">
-                          {currencySymbol} {formatStockPrice(getProductRetailPrice(previewProduct))}
+                          {currencySymbol} {formatStockPrice(getProductRetailPrice(previewProduct, companySettings))}
                         </span>
                       </div>
                     )}
@@ -1257,7 +1257,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                     <div className="flex justify-between items-center text-[7pt] font-bold border-t border-gray-300 pt-0.5">
                       <span className="text-gray-600">PRICE:</span>
                       <span className="text-[8pt] text-black font-mono font-black">
-                        {currencySymbol} {formatStockPrice(getProductRetailPrice(item.product))}
+                        {currencySymbol} {formatStockPrice(getProductRetailPrice(item.product, companySettings))}
                       </span>
                     </div>
                   )}
@@ -1311,7 +1311,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                     <div className="flex justify-between items-center text-[7.5pt] font-bold border-t border-gray-300 pt-0.5">
                       <span className="text-gray-600">PRICE:</span>
                       <span className="text-[8.5pt] text-black font-mono font-black">
-                        {currencySymbol} {formatStockPrice(getProductRetailPrice(item.product))}
+                        {currencySymbol} {formatStockPrice(getProductRetailPrice(item.product, companySettings))}
                       </span>
                     </div>
                   )}

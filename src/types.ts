@@ -49,29 +49,30 @@ export interface CompanySettings {
   pricing_mode?: 'FIXED' | 'NEGOTIABLE';
   fixedProfitMargin?: number;
   fixed_profit_margin?: number;
+  fixedProfitAmount?: number;
+  fixed_profit_amount?: number;
   minProfitMargin?: number;
   min_profit_margin?: number;
+  minProfitAmount?: number;
+  min_profit_amount?: number;
   maxProfitMargin?: number;
   max_profit_margin?: number;
+  maxProfitAmount?: number;
+  max_profit_amount?: number;
   updatedAt: string;
 }
 
 export interface Brand {
-  id: number;
   name: string;
   logo?: string;
   product_count?: number;
   total_units?: number;
-  createdAt: string;
 }
 
 export interface Category {
-  id: number;
   name: string;
-  lowStockLimit?: number;
   product_count?: number;
   total_units?: number;
-  createdAt: string;
 }
 
 export interface ProductSize {
@@ -94,18 +95,12 @@ export type AiConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface AiBrandSuggestion {
   suggestedName: string;
-  matchedId: number | null;
-  matchedName: string | null;
-  isExisting: boolean;
   confidence: AiConfidenceLevel;
   isUnknown: boolean;
 }
 
 export interface AiCategorySuggestion {
   suggestedName: string;
-  matchedId: number | null;
-  matchedName: string | null;
-  isExisting: boolean;
   confidence: AiConfidenceLevel;
 }
 
@@ -125,18 +120,35 @@ export interface Product {
   id: number;
   article: string;
   name?: string;
-  brandId: number | null;
+  brand: string;
   brandName?: string;
   brandLogo?: string;
-  categoryId: number | null;
+  category: string;
   categoryName?: string;
   sku: string;
   barcode: string;
   primaryImageUrl: string;
   description?: string;
-  purchasePrice: number;
-  minSalePrice: number;
-  maxSalePrice?: number;
+  costPrice: number;
+  cost_price?: number;
+  marginType?: 'FIXED' | 'NEGOTIABLE';
+  margin_type?: 'FIXED' | 'NEGOTIABLE';
+  profitCalculationMethod?: 'FIXED_AMOUNT' | 'PROFIT_MARGIN';
+  profit_calculation_method?: 'FIXED_AMOUNT' | 'PROFIT_MARGIN';
+  profitMargin?: number | null;
+  profit_margin?: number | null;
+  profitAmount?: number | null;
+  profit_amount?: number | null;
+  customMinMargin?: number | null;
+  custom_min_margin?: number | null;
+  customMaxMargin?: number | null;
+  custom_max_margin?: number | null;
+  salePrice?: number | null;
+  sale_price?: number | null;
+  minSalePrice?: number | null;
+  min_sale_price?: number | null;
+  maxSalePrice?: number | null;
+  max_sale_price?: number | null;
   totalStock: number;
   lowStockLimit: number;
   active: boolean;
@@ -148,12 +160,22 @@ export interface Product {
 
 export interface Customer {
   id: number;
+  code?: string;
   name: string;
   phone: string;
   email?: string;
   address?: string;
   notes?: string;
   totalPurchases?: number;
+  total_orders?: number;
+  totalOrders?: number;
+  total_spent?: number | string;
+  totalSpent?: number;
+  loyalty_points?: number;
+  loyaltyPoints?: number;
+  balance?: number | string;
+  last_visit?: string | null;
+  lastVisit?: string | null;
   createdAt: string;
 }
 
@@ -162,9 +184,8 @@ export interface Supplier {
   name: string;
   phone?: string;
   email?: string;
-  address?: string;
-  url?: string;
-  notes?: string;
+  balance?: number | string;
+  net_payable_balance?: number | string;
   total_purchases?: number;
   totalPurchases?: number;
   total_purchased_amount?: number | string;
@@ -184,9 +205,11 @@ export interface CartItem {
   colorBarcode?: string;
   quantity: number;
   unitPrice: number;
+  pricingPolicy?: 'FIXED' | 'NEGOTIABLE';
+  salePrice?: number;
   minSalePrice: number;
   maxSalePrice?: number;
-  purchasePrice: number;
+  costPrice: number;
   discount: number;
   total: number;
   totalStock: number;
@@ -275,7 +298,6 @@ export interface PurchaseReturn {
   supplierId?: number | null;
   supplierName: string;
   supplierPhone?: string;
-  supplierAddress?: string;
   returnDate: string;
   totalDebitAmount: number;
   reason: string;

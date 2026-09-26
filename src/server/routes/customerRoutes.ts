@@ -12,7 +12,10 @@ router.get('/', requireAuth, async (req, res: Response) => {
     let query = `
       SELECT c.*,
              COUNT(s.id)::int as total_orders,
-             COALESCE(SUM(s.total_amount), 0)::numeric as total_spent
+             COALESCE(SUM(s.total_amount), 0)::numeric as total_spent,
+             FLOOR(COALESCE(SUM(s.total_amount), 0) / 100)::int as loyalty_points,
+             MAX(s.sale_date) as last_visit,
+             MAX(s.created_at) as last_sale_at
       FROM customers c
       LEFT JOIN sales s ON c.id = s.customer_id
       WHERE 1=1
@@ -21,7 +24,7 @@ router.get('/', requireAuth, async (req, res: Response) => {
 
     if (search && typeof search === 'string') {
       params.push(`%${search.trim().toLowerCase()}%`);
-      query += ` AND (LOWER(c.name) LIKE $${params.length} OR c.phone LIKE $${params.length} OR LOWER(c.email) LIKE $${params.length})`;
+      query += ` AND (LOWER(c.name) LIKE $${params.length} OR LOWER(c.phone) LIKE $${params.length} OR LOWER(COALESCE(c.email, '')) LIKE $${params.length} OR CAST(c.id AS TEXT) LIKE $${params.length})`;
     }
 
     query += ` GROUP BY c.id ORDER BY c.id DESC`;

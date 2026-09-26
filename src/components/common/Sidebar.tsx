@@ -108,8 +108,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'pos', label: 'POS Terminal', icon: ShoppingCart, shortcut: 'F1' },
         { id: 'inventory', label: 'Shoe Catalog', icon: Boxes, shortcut: 'F2' },
-        { id: 'brands', label: 'Brands', icon: Tag },
-        { id: 'categories', label: 'Categories', icon: Layers },
         { id: 'ledger', label: 'Stock Ledger', icon: BookOpen },
       ],
     },
@@ -135,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
-        if (isCashier && (item.id === 'purchases' || item.id === 'brands' || item.id === 'categories')) {
+        if (isCashier && item.id === 'purchases') {
           return false;
         }
         return true;
@@ -153,83 +151,85 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     return (
       <div
-        className={`w-full h-full max-h-screen flex flex-col bg-white dark:bg-[#0D1322] text-slate-700 dark:text-slate-100 select-none border-r border-slate-200 dark:border-slate-800 overflow-y-auto overflow-x-hidden sidebar-scrollbar transition-colors ${
+        className={`w-full h-full max-h-screen flex flex-col bg-white/95 dark:bg-[#0D1322] backdrop-blur-lg text-slate-700 dark:text-slate-100 select-none border-r border-indigo-500/20 shadow-lg rounded-none overflow-y-auto overflow-x-hidden sidebar-scrollbar transition-colors ${
           collapsed ? 'px-2' : ''
         }`}
       >
-        {/* TOP: Store Brand Header + Collapse Toggle + Dashboard Link */}
-        <div className={`p-4 pb-2 ${collapsed ? 'px-1 pt-3 pb-2' : ''}`}>
+        {/* TOP: Store Brand Header aligned with top Header bar (exact h-[3.6rem] with matching border-b) */}
+        <div
+          className={`h-[3.6rem] flex items-center justify-between border-b border-indigo-500/20 shrink-0 ${
+            collapsed ? 'px-2 justify-center' : 'px-3.5 sm:px-4'
+          }`}
+        >
           {/* Brand Banner */}
-          <div className="flex items-center justify-between gap-2 pb-3">
-            <div className={`flex items-center gap-3 min-w-0 ${collapsed ? 'justify-center w-full' : ''}`}>
-              {companySettings?.logo ? (
-                <img
-                  src={companySettings.logo}
-                  alt="Logo"
-                  className="w-10 h-10 rounded-xl object-cover bg-white p-0.5 border border-slate-200 dark:border-slate-800 shrink-0 shadow-sm"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-md shadow-purple-600/25 border border-purple-400/30">
-                  👟
-                </div>
-              )}
-              {!collapsed && (
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-sm font-bold text-slate-900 dark:text-white truncate tracking-tight leading-tight">
-                    {storeName}
-                  </h1>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
-                    Retail Management System
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Mobile Close Button */}
-            {isMobile && (
-              <button
-                id="sidebar-close-mobile-btn"
-                type="button"
-                onClick={onCloseMobile}
-                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/60 transition cursor-pointer"
-                aria-label="Close Mobile Navigation"
-              >
-                <X className="w-5 h-5" />
-              </button>
+          <div className={`flex items-center gap-2.5 min-w-0 ${collapsed ? 'justify-center w-full' : ''}`}>
+            {companySettings?.logo ? (
+              <img
+                src={companySettings.logo}
+                alt="Logo"
+                className="w-8 h-8 rounded-lg object-cover bg-white p-0.5 border border-indigo-500/20 shrink-0 shadow-xs"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm border border-purple-400/30">
+                👟
+              </div>
             )}
-
-            {/* Desktop Collapse / Expand Toggle Button */}
-            {!isMobile && !collapsed && (
-              <button
-                id="sidebar-collapse-toggle-btn"
-                type="button"
-                onClick={toggleCollapse}
-                className="p-1.5 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg hover:bg-purple-50 dark:hover:bg-slate-800 transition cursor-pointer"
-                title="Collapse sidebar (Ctrl+B)"
-                aria-label="Collapse sidebar"
-              >
-                <PanelLeftClose className="w-4 h-4" />
-              </button>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xs font-bold text-slate-900 dark:text-white truncate tracking-tight leading-tight">
+                  {storeName}
+                </h1>
+                <p className="text-[10px] text-slate-500 dark:text-indigo-200/70 font-medium truncate mt-0.5">
+                  Retail Management System
+                </p>
+              </div>
             )}
           </div>
 
-          {/* Collapsed Expand Toggle Button */}
-          {collapsed && (
-            <div className="flex justify-center pb-2">
-              <button
-                id="sidebar-expand-toggle-btn"
-                type="button"
-                onClick={toggleCollapse}
-                className="p-2 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg hover:bg-purple-50 dark:hover:bg-slate-800 transition cursor-pointer"
-                title="Expand sidebar (Ctrl+B)"
-                aria-label="Expand sidebar"
-              >
-                <PanelLeftOpen className="w-4 h-4" />
-              </button>
-            </div>
+          {/* Mobile Close Button */}
+          {isMobile && (
+            <button
+              id="sidebar-close-mobile-btn"
+              type="button"
+              onClick={onCloseMobile}
+              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+              aria-label="Close Mobile Navigation"
+            >
+              <X className="w-4 h-4" />
+            </button>
           )}
 
-          {/* Dashboard Menu Item */}
+          {/* Desktop Collapse / Expand Toggle Button */}
+          {!isMobile && !collapsed && (
+            <button
+              id="sidebar-collapse-toggle-btn"
+              type="button"
+              onClick={toggleCollapse}
+              className="p-1.5 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg hover:bg-purple-50 dark:hover:bg-white/10 transition cursor-pointer"
+              title="Collapse sidebar (Ctrl+B)"
+              aria-label="Collapse sidebar"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Collapsed Expand Toggle Button */}
+          {!isMobile && collapsed && (
+            <button
+              id="sidebar-expand-toggle-btn"
+              type="button"
+              onClick={toggleCollapse}
+              className="p-1 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg hover:bg-purple-50 dark:hover:bg-white/10 transition cursor-pointer"
+              title="Expand sidebar (Ctrl+B)"
+              aria-label="Expand sidebar"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* TOP ITEM: Dashboard Quick Navigation */}
+        <div className={`pt-2.5 pb-1 ${collapsed ? 'px-1' : 'px-3'}`}>
           <div className="relative">
             <motion.button
               type="button"
@@ -237,7 +237,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => handleItemClick('dashboard')}
               whileTap={{ scale: 0.98 }}
               className={`relative w-full flex items-center ${
-                collapsed ? 'justify-center p-2.5' : 'justify-between px-3.5 py-2.5'
+                collapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2'
               } rounded-xl text-xs font-semibold cursor-pointer group transition-colors duration-150 ${
                 currentTab === 'dashboard'
                   ? 'text-white font-bold'
@@ -280,11 +280,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {sections.map((section) => (
             <div key={section.header} className="space-y-1">
               {!collapsed ? (
-                <div className="text-[10px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider px-2 py-0.5">
+                <div className="text-[10px] font-bold text-slate-400 dark:text-indigo-300/70 uppercase tracking-wider px-2 py-0.5">
                   {section.header}
                 </div>
               ) : (
-                <div className="w-8 h-px bg-slate-200 dark:bg-slate-800 mx-auto my-2" />
+                <div className="w-8 h-px bg-indigo-500/20 mx-auto my-2" />
               )}
 
               <div className="space-y-0.5">
@@ -332,7 +332,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             className={`relative z-10 text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded-md transition ${
                               isActive
                                 ? 'bg-white/20 text-white border border-white/30'
-                                : 'bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
+                                : 'bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-indigo-500/20'
                             }`}
                           >
                             {item.shortcut}
@@ -362,7 +362,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* BOTTOM: User Profile, Database Status, Shortcuts & App Version */}
         <div
-          className={`border-t border-slate-200 dark:border-slate-800 space-y-2 bg-slate-50/50 dark:bg-[#090E18] mt-auto transition-colors ${
+          className={`border-t border-indigo-500/20 space-y-2 bg-slate-50/40 dark:bg-[#090E18] backdrop-blur-md mt-auto transition-colors ${
             collapsed ? 'p-2 pt-3' : 'p-3.5 pt-3'
           }`}
         >
@@ -373,7 +373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onOpenProfile?.();
               if (isMobile) onCloseMobile();
             }}
-            className={`flex items-center rounded-xl bg-white hover:bg-slate-100 dark:bg-[#131B2E] dark:hover:bg-[#1A263D] border border-slate-200/80 dark:border-slate-800 cursor-pointer transition group shadow-2xs ${
+            className={`flex items-center rounded-xl bg-white/80 hover:bg-white dark:bg-[#131B2E] dark:hover:bg-[#1A263D] border border-indigo-500/20 cursor-pointer transition group shadow-xs ${
               collapsed ? 'justify-center p-2 relative' : 'justify-between p-2'
             }`}
             title={collapsed ? `${currentUser?.name || 'Admin'} • Profile` : 'Click to view & edit your profile'}
@@ -390,7 +390,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               {!collapsed && (
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-500 dark:group-hover:text-cyan-400 transition">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-purple-600 dark:group-hover:text-purple-300 transition">
                     {currentUser?.name || 'Admin'}
                   </div>
                   <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
@@ -419,7 +419,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             id="sidebar-install-app-btn"
             type="button"
             onClick={() => setIsInstallModalOpen(true)}
-            className={`w-full flex items-center rounded-xl bg-indigo-50/80 hover:bg-indigo-100 dark:bg-[#131B2E] dark:hover:bg-[#1A263D] border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300 transition cursor-pointer group shadow-2xs ${
+            className={`w-full flex items-center rounded-xl bg-indigo-50/60 hover:bg-indigo-100/80 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition cursor-pointer group shadow-xs ${
               collapsed ? 'justify-center p-2 relative' : 'justify-between px-2.5 py-1.5'
             }`}
             title="Install Android APK, iOS Safari PWA, or Windows .EXE"
@@ -429,7 +429,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {!collapsed && <span className="text-[11px] font-bold">Install App (APK / PWA)</span>}
             </div>
             {!collapsed && (
-              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white dark:bg-[#070B14] text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/80">
+              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-white dark:bg-[#070B14] text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
                 APK • iOS • PC
               </span>
             )}
@@ -448,7 +448,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               id="sidebar-theme-toggle-btn"
               type="button"
               onClick={toggleTheme}
-              className={`w-full flex items-center rounded-lg bg-slate-100 hover:bg-slate-200/80 dark:bg-[#0E1628] dark:hover:bg-[#131D33] border border-slate-200 dark:border-[#1A263D] text-[11px] text-slate-700 dark:text-slate-200 transition cursor-pointer ${
+              className={`w-full flex items-center rounded-lg bg-slate-100/80 hover:bg-slate-200/80 dark:bg-[#0E1628] dark:hover:bg-[#131D33] border border-indigo-500/20 text-[11px] text-slate-700 dark:text-slate-200 transition cursor-pointer ${
                 collapsed ? 'justify-center p-2 relative group' : 'justify-between px-2 py-1.5'
               }`}
               title={`Current theme: ${theme}. Click to toggle`}
@@ -462,7 +462,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {!collapsed && <span>Theme</span>}
               </div>
               {!collapsed && (
-                <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-white dark:bg-[#070B14] text-slate-600 dark:text-cyan-300 border border-slate-200/80 dark:border-slate-800">
+                <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-white dark:bg-[#070B14] text-slate-600 dark:text-cyan-300 border border-indigo-500/20">
                   {theme === 'dark' ? 'Dark' : 'Light'}
                 </span>
               )}
@@ -476,7 +476,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Database Connected Status */}
             <div
-              className={`flex items-center rounded-lg bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/50 text-[10.5px] ${
+              className={`flex items-center rounded-lg bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-500/20 text-[10.5px] ${
                 collapsed ? 'justify-center p-2 relative group' : 'justify-between px-2 py-1'
               }`}
             >
@@ -513,7 +513,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Version */}
             {!collapsed && (
-              <div className="px-2 pt-1 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[9.5px] text-slate-400 dark:text-slate-500">
+              <div className="px-2 pt-1 border-t border-indigo-500/15 flex items-center justify-between text-[9.5px] text-slate-400 dark:text-slate-500">
                 <span>Retail Shoe POS</span>
                 <span className="font-mono">v1.0.0</span>
               </div>
@@ -531,7 +531,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         initial={false}
         animate={{ width: isCollapsed ? 72 : 256 }}
         transition={{ type: 'spring', stiffness: 350, damping: 32 }}
-        className="hidden lg:flex shrink-0 h-screen sticky top-0 z-30 no-print overflow-hidden"
+        className="hidden lg:flex shrink-0 h-screen sticky top-0 z-30 no-print overflow-hidden rounded-none shadow-lg border-r border-indigo-500/20"
       >
         {renderSidebar(false)}
       </motion.aside>
@@ -553,7 +553,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-              className="relative w-72 max-w-[85vw] h-full max-h-screen shadow-2xl z-10 overflow-hidden"
+              className="relative w-72 max-w-[85vw] h-full max-h-screen shadow-2xl z-10 overflow-hidden rounded-none border-r border-indigo-500/20"
             >
               {renderSidebar(true)}
             </motion.div>

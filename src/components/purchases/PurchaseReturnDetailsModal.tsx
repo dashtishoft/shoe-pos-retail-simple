@@ -98,9 +98,6 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
               {returnRecord.supplier_phone && (
                 <p className="text-slate-600 dark:text-slate-400 text-[11px] mt-0.5">Phone: {returnRecord.supplier_phone}</p>
               )}
-              {returnRecord.supplier_address && (
-                <p className="text-slate-600 dark:text-slate-400 text-[11px]">Address: {returnRecord.supplier_address}</p>
-              )}
             </div>
           </div>
 

@@ -122,12 +122,15 @@ export const api = {
 
   // Products
   products: {
-    list: (params?: { search?: string; brandId?: number; categoryId?: number; lowStockOnly?: boolean }) => {
+    list: (params?: { search?: string; brand?: string; category?: string; brandId?: any; categoryId?: any; lowStockOnly?: boolean; limit?: number }) => {
       const q = new URLSearchParams();
       if (params?.search) q.set('search', params.search);
-      if (params?.brandId) q.set('brandId', String(params.brandId));
-      if (params?.categoryId) q.set('categoryId', String(params.categoryId));
+      if (params?.brand) q.set('brand', params.brand);
+      else if (params?.brandId) q.set('brand', String(params.brandId));
+      if (params?.category) q.set('category', params.category);
+      else if (params?.categoryId) q.set('category', String(params.categoryId));
       if (params?.lowStockOnly) q.set('lowStockOnly', 'true');
+      if (params?.limit) q.set('limit', String(params.limit));
       return request<{ products: any[] }>(`/products?${q.toString()}`);
     },
     get: (id: number) => request<{ product: any }>(`/products/${id}`),
@@ -167,10 +170,12 @@ export const api = {
       }>(`/products/generate-barcode${query}`);
     },
     getNextId: () => request<{ nextProductId: number }>('/products/next-id'),
-    suggestSku: (params?: { brandId?: number; brandName?: string; article?: string; productId?: number }) => {
+    suggestSku: (params?: { brand?: string; category?: string; brandId?: any; brandName?: string; categoryId?: any; categoryName?: string; article?: string; productId?: number }) => {
       const q = new URLSearchParams();
-      if (params?.brandId !== undefined) q.set('brandId', String(params.brandId));
-      if (params?.brandName !== undefined) q.set('brandName', params.brandName);
+      const b = params?.brand || params?.brandName || (params?.brandId ? String(params.brandId) : '');
+      const c = params?.category || params?.categoryName || (params?.categoryId ? String(params.categoryId) : '');
+      if (b) q.set('brand', b);
+      if (c) q.set('category', c);
       if (params?.article !== undefined) q.set('article', params.article);
       if (params?.productId !== undefined) q.set('productId', String(params.productId));
       const query = q.toString() ? `?${q.toString()}` : '';

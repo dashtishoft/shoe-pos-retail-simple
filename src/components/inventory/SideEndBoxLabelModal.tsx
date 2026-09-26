@@ -55,7 +55,7 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
   const articleName = product?.article || product?.name || 'Shoe Article';
   const sku = product?.sku || '';
   const barcode = product?.barcode || sku;
-  const retailPrice = formatStockPrice(getProductRetailPrice(product));
+  const retailPrice = formatStockPrice(getProductRetailPrice(product, companySettings));
 
   const activeColor = leaveBlankForMarker ? '' : colorInput;
   const activeSize = leaveBlankForMarker ? '' : sizeInput;

@@ -49,9 +49,6 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
-  const [url, setUrl] = useState('');
-  const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,9 +111,6 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
     setName('');
     setPhone('');
     setEmail('');
-    setAddress('');
-    setUrl('');
-    setNotes('');
     setError(null);
     setIsModalOpen(true);
   };
@@ -126,9 +120,6 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
     setName(sup.name || '');
     setPhone(sup.phone || '');
     setEmail(sup.email || '');
-    setAddress(sup.address || '');
-    setUrl(sup.url || '');
-    setNotes(sup.notes || '');
     setError(null);
     setIsModalOpen(true);
   };
@@ -147,9 +138,6 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
         name: name.trim(),
         phone: phone.trim(),
         email: email.trim(),
-        address: address.trim(),
-        url: url.trim(),
-        notes: notes.trim(),
       };
 
       if (editingSupplier) {
@@ -355,7 +343,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
           <Search className="w-4 h-4 absolute left-3 text-slate-400 dark:text-purple-300/70" />
           <input
             type="text"
-            placeholder="Search suppliers by company name, phone, email, URL, or address..."
+            placeholder="Search suppliers by company name, phone, or email..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-24 py-2 text-xs bg-white dark:bg-purple-950/40 text-slate-900 dark:text-purple-100 placeholder-slate-400 dark:placeholder-purple-300/50 border border-slate-200 dark:border-purple-700/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30 dark:focus:ring-purple-500/40 focus:border-blue-500 dark:focus:border-purple-400 font-medium transition shadow-2xs"
@@ -450,37 +438,12 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                   return (
                     <tr key={sup.id} className="hover:bg-blue-50/30 dark:hover:bg-purple-950/30 transition">
                       <td className="py-3 px-4">
-                        <div className="flex items-start space-x-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-purple-500/20 border border-blue-200 dark:border-purple-400/30 text-blue-600 dark:text-purple-300 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5 shadow-2xs">
+                        <div className="flex items-center space-x-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-purple-500/20 border border-blue-200 dark:border-purple-400/30 text-blue-600 dark:text-purple-300 flex items-center justify-center shrink-0 font-bold text-xs shadow-2xs">
                             {sup.name.slice(0, 2).toUpperCase()}
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-slate-900 dark:text-white text-sm">{sup.name}</div>
-                            {sup.address && (
-                              <div className="flex items-center text-slate-500 dark:text-purple-200/70 text-[11px] mt-0.5 truncate max-w-xs">
-                                <MapPin className="w-3 h-3 mr-1 shrink-0 text-slate-400 dark:text-purple-300/60" />
-                                <span className="truncate">{sup.address}</span>
-                              </div>
-                            )}
-                            {sup.url && (
-                              <div className="mt-0.5">
-                                <a
-                                  href={sup.url.startsWith('http') ? sup.url : `https://${sup.url}`}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  className="inline-flex items-center space-x-1 text-blue-600 dark:text-purple-300 hover:underline text-[11px] font-medium"
-                                >
-                                  <Globe className="w-3 h-3 shrink-0 text-blue-500 dark:text-purple-400" />
-                                  <span className="truncate max-w-[140px]">{sup.url.replace(/^https?:\/\//, '')}</span>
-                                  <ExternalLink className="w-2.5 h-2.5 shrink-0 opacity-70" />
-                                </a>
-                              </div>
-                            )}
-                            {sup.notes && (
-                              <div className="text-slate-500 dark:text-purple-200/70 text-[11px] italic mt-0.5 line-clamp-1">
-                                {sup.notes}
-                              </div>
-                            )}
                           </div>
                         </div>
                       </td>
@@ -695,46 +658,6 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-purple-200 mb-1">
-                  Website / Catalog URL
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. https://www.nike.com or vendor portal link"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-purple-800/60 bg-white dark:bg-slate-950/60 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-purple-300/40 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/30 dark:focus:ring-purple-500/30 focus:border-blue-500 dark:focus:border-purple-400 font-mono text-xs transition"
-                />
-                <p className="text-[10px] text-slate-400 dark:text-purple-300/60 mt-0.5">
-                  Direct link to their wholesale website, order portal, or digital catalog.
-                </p>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-purple-200 mb-1">Warehouse / Office Address</label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Warehouse 4B, Industrial Estate, Karachi"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-purple-800/60 bg-white dark:bg-slate-950/60 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-purple-300/40 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/30 dark:focus:ring-purple-500/30 focus:border-blue-500 dark:focus:border-purple-400 text-xs transition"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-purple-200 mb-1">
-                  Notes & Brands Supplied
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Authorized Nike sports shoes, 15 days credit terms, minimum 20 pairs order."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-purple-800/60 bg-white dark:bg-slate-950/60 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-purple-300/40 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/30 dark:focus:ring-purple-500/30 focus:border-blue-500 dark:focus:border-purple-400 text-xs transition"
-                />
-              </div>
-
               <div className="px-6 py-4 -mx-6 -mb-6 mt-4 bg-slate-50 dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 border-t border-slate-200 dark:border-purple-800/80 flex items-center justify-end space-x-2.5">
                 <button
                   type="button"
@@ -773,17 +696,6 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                   <div className="flex items-center space-x-3 text-[11px] text-slate-500 dark:text-purple-200/70 mt-0.5">
                     {selectedSupplier.phone && <span>📞 {selectedSupplier.phone}</span>}
                     {selectedSupplier.email && <span>✉️ {selectedSupplier.email}</span>}
-                    {selectedSupplier.url && (
-                      <a
-                        href={selectedSupplier.url.startsWith('http') ? selectedSupplier.url : `https://${selectedSupplier.url}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 dark:text-purple-300 hover:underline flex items-center space-x-0.5 font-medium"
-                      >
-                        <Globe className="w-3 h-3" />
-                        <span>Website</span>
-                      </a>
-                    )}
                   </div>
                 </div>
               </div>

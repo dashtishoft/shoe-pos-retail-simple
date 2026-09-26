@@ -34,6 +34,7 @@ import { ProductFormModal } from '../inventory/ProductFormModal.tsx';
 import { SupplierReturnModal } from './SupplierReturnModal.tsx';
 import { PurchaseReturnDetailsModal } from './PurchaseReturnDetailsModal.tsx';
 import { SupplierPaymentModal } from '../suppliers/SupplierPaymentModal.tsx';
+import { SupplierPicker } from './SupplierPicker.tsx';
 import { StatCard, triggerStatRecount } from '../common/StatCard.tsx';
 import { useScrollActiveTab } from '../../hooks/useScrollActiveTab.ts';
 
@@ -99,15 +100,13 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
   // Supplier Table Modal (Select Supplier from Table)
   const [isSupplierTableModalOpen, setIsSupplierTableModalOpen] = useState(false);
   const [supplierSearchInModal, setSupplierSearchInModal] = useState('');
+  const [isSupplierPickerModalOpen, setIsSupplierPickerModalOpen] = useState(false);
 
   // Quick Add Supplier Modal
   const [isQuickSupplierModalOpen, setIsQuickSupplierModalOpen] = useState(false);
   const [quickSupplierName, setQuickSupplierName] = useState('');
   const [quickSupplierPhone, setQuickSupplierPhone] = useState('');
   const [quickSupplierEmail, setQuickSupplierEmail] = useState('');
-  const [quickSupplierAddress, setQuickSupplierAddress] = useState('');
-  const [quickSupplierUrl, setQuickSupplierUrl] = useState('');
-  const [quickSupplierNotes, setQuickSupplierNotes] = useState('');
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
 
   // Products & Product Selection
@@ -184,7 +183,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
   // Global key navigation & auto-focus for barcode scanning inside the purchase modal
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (!isModalOpen || isProductCatalogModalOpen || isSupplierTableModalOpen) return;
+      if (!isModalOpen || isProductCatalogModalOpen || isSupplierTableModalOpen || isSupplierPickerModalOpen) return;
 
       if (e.key === 'F2' || (e.ctrlKey && e.key === 'k')) {
         e.preventDefault();
@@ -204,7 +203,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isModalOpen, isProductCatalogModalOpen, isSupplierTableModalOpen]);
+  }, [isModalOpen, isProductCatalogModalOpen, isSupplierTableModalOpen, isSupplierPickerModalOpen]);
 
   useEffect(() => {
     loadPurchases();
@@ -212,6 +211,33 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
     loadProducts();
     loadSuppliers();
     loadBrandsAndCategories();
+
+    // Check for pending purchase entry from Quick Price search bar
+    const handleNewPurchaseEvent = (e: any) => {
+      const product = e.detail?.product;
+      if (product) {
+        setIsModalOpen(true);
+        setModalStep(1);
+        handleSelectProduct(product);
+      }
+    };
+
+    window.addEventListener('purchase:new-entry', handleNewPurchaseEvent);
+
+    const pendingPurchaseStr = sessionStorage.getItem('pending_purchase_product');
+    if (pendingPurchaseStr) {
+      try {
+        const prod = JSON.parse(pendingPurchaseStr);
+        sessionStorage.removeItem('pending_purchase_product');
+        setIsModalOpen(true);
+        setModalStep(1);
+        handleSelectProduct(prod);
+      } catch {}
+    }
+
+    return () => {
+      window.removeEventListener('purchase:new-entry', handleNewPurchaseEvent);
+    };
   }, []);
 
   useEffect(() => {
@@ -379,12 +405,12 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
     // Beep sound on barcode/product accepted!
     playAudioFeedback.barcodeScan();
 
-    // Pre-fill cost with product's registered purchase price
+    // Pre-fill cost with product's registered cost price
     const rawCost =
-      prod.purchasePrice !== undefined && prod.purchasePrice !== null
-        ? prod.purchasePrice
-        : prod.purchase_price !== undefined && prod.purchase_price !== null
-        ? prod.purchase_price
+      prod.costPrice !== undefined && prod.costPrice !== null
+        ? prod.costPrice
+        : prod.cost_price !== undefined && prod.cost_price !== null
+        ? prod.cost_price
         : 0;
     const defaultCost = parseFloat(cleanStockPriceInput(rawCost)) || 0;
     setItemUnitCost(defaultCost);
@@ -713,9 +739,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
         name: quickSupplierName.trim(),
         phone: quickSupplierPhone.trim(),
         email: quickSupplierEmail.trim(),
-        address: quickSupplierAddress.trim(),
-        url: quickSupplierUrl.trim(),
-        notes: quickSupplierNotes.trim(),
       });
 
       // Reload suppliers list and immediately select the new supplier
@@ -729,9 +752,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
       setQuickSupplierName('');
       setQuickSupplierPhone('');
       setQuickSupplierEmail('');
-      setQuickSupplierAddress('');
-      setQuickSupplierUrl('');
-      setQuickSupplierNotes('');
     } catch (err: any) {
       alert(err.message || 'Failed to add supplier');
     } finally {
@@ -761,9 +781,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
     return (
       s.name.toLowerCase().includes(q) ||
       (s.phone && s.phone.toLowerCase().includes(q)) ||
-      (s.email && s.email.toLowerCase().includes(q)) ||
-      (s.url && s.url.toLowerCase().includes(q)) ||
-      (s.address && s.address.toLowerCase().includes(q))
+      (s.email && s.email.toLowerCase().includes(q))
     );
   });
 
@@ -1146,18 +1164,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                                 {p.supplier_phone}
                               </span>
                             )}
-                            {p.supplier_url && (
-                              <a
-                                href={p.supplier_url.startsWith('http') ? p.supplier_url : `https://${p.supplier_url}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-blue-600 dark:text-cyan-400 hover:underline flex items-center font-medium"
-                              >
-                                <Globe className="w-2.5 h-2.5 mr-0.5" />
-                                Website
-                              </a>
-                            )}
                           </div>
                         </td>
                         <td className="py-3 px-3 text-center">
@@ -1494,71 +1500,45 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
               {/* STEP 1: SUPPLIER & ORDER INFORMATION */}
               {modalStep === 1 && (
                 <div className="space-y-4">
-                  {/* Supplier Selection Container */}
-                  <div className="p-4 bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-purple-800/50 rounded-2xl space-y-3">
+                  {/* Supplier Selection Container (Aligned with POS Terminal CustomerPicker) */}
+                  <div className="p-4 bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-purple-800/50 rounded-2xl space-y-3 relative z-20">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <label className="font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider flex items-center space-x-1.5">
                         <Building2 className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
                         <span>Select Supplier / Vendor *</span>
                       </label>
 
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => setIsSupplierTableModalOpen(true)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-[#0E1628] hover:bg-slate-50 dark:hover:bg-[#131D33] border border-slate-200/90 dark:border-purple-800/60 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs cursor-pointer transition"
-                        >
-                          <Table className="w-3.5 h-3.5" />
-                          <span>Browse Supplier Table</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setIsQuickSupplierModalOpen(true)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-800 text-white border border-purple-400/40 shadow-sm shadow-purple-600/25 dark:border-purple-400/50 text-xs font-bold cursor-pointer transition active:scale-95"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>+ Quick Add Supplier</span>
-                        </button>
-                      </div>
+                      {selectedSupplierObj ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60">
+                          SUP-{String(selectedSupplierObj.id).padStart(4, '0')}
+                        </span>
+                      ) : supplierName.trim() ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/60">
+                          Custom Vendor
+                        </span>
+                      ) : null}
                     </div>
 
-                    {/* Dropdown Select Menu & Custom Name Input */}
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                      <div className="sm:col-span-7">
-                        <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                          Choose from Registered Suppliers Directory:
-                        </label>
-                        <select
-                          value={selectedSupplierId}
-                          onChange={(e) => handleSupplierSelect(e.target.value)}
-                          className="w-full px-3 py-2 bg-white dark:bg-purple-500/20 border border-slate-200 dark:border-purple-400/40 rounded-xl font-semibold text-slate-900 dark:text-purple-200 hover:bg-slate-50 dark:hover:bg-purple-500/30 dark:hover:text-white dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 text-xs shadow-2xs cursor-pointer"
-                        >
-                          <option value="">-- Select Supplier --</option>
-                          {suppliers.map((sup) => (
-                            <option key={sup.id} value={sup.id}>
-                              {sup.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="sm:col-span-5">
-                        <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                          Or Type Custom / Ad-hoc Supplier Name:
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Local Direct Leather Artisan"
-                          value={supplierName}
-                          onChange={(e) => {
-                            setSupplierName(e.target.value);
-                            setSelectedSupplierId('');
-                          }}
-                          className="w-full px-3 py-2 bg-white dark:bg-[#0E1628] border border-slate-200 dark:border-purple-800/60 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 font-medium text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
-                        />
-                      </div>
-                    </div>
+                    {/* POS-Aligned Searchable Supplier Combobox + Find Modal + Quick New Supplier */}
+                    <SupplierPicker
+                      suppliers={suppliers}
+                      selectedSupplierId={selectedSupplierId}
+                      supplierName={supplierName}
+                      onSelectSupplier={(supId, supName) => {
+                        setSelectedSupplierId(supId);
+                        setSupplierName(supName);
+                        setErrorMessage(null);
+                      }}
+                      onSupplierCreated={(newSupplier) => {
+                        setSuppliers((prev) => [newSupplier, ...prev]);
+                        setSelectedSupplierId(newSupplier.id);
+                        setSupplierName(newSupplier.name);
+                        setErrorMessage(null);
+                      }}
+                      currencySymbol={currencySymbol}
+                      onModalOpenChange={setIsSupplierPickerModalOpen}
+                      placeholder="Search Supplier / Vendor (Type name, phone, #ID...)"
+                    />
 
                     {/* Selected Supplier Card Preview */}
                     {selectedSupplierObj ? (
@@ -1587,30 +1567,11 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                                   <span>{selectedSupplierObj.email}</span>
                                 </a>
                               )}
-                              {selectedSupplierObj.address && (
-                                <span className="flex items-center text-slate-500 dark:text-slate-400">
-                                  <MapPin className="w-3 h-3 mr-1 text-slate-400" />
-                                  <span>{selectedSupplierObj.address}</span>
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
 
                         <div className="flex items-center space-x-2">
-                          {selectedSupplierObj.url && (
-                            <a
-                              href={selectedSupplierObj.url.startsWith('http') ? selectedSupplierObj.url : `https://${selectedSupplierObj.url}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center space-x-1 text-blue-600 dark:text-cyan-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1.5 rounded-lg border border-blue-100 dark:border-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 font-semibold"
-                            >
-                              <Globe className="w-3 h-3" />
-                              <span>Supplier Portal</span>
-                              <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                            </a>
-                          )}
-
                           <button
                             type="button"
                             onClick={() => {
@@ -1623,11 +1584,29 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                           </button>
                         </div>
                       </div>
-                    ) : (
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 italic bg-white dark:bg-[#0E1628] p-2.5 rounded-xl border border-dashed border-slate-300 dark:border-purple-800/60 flex items-center justify-between">
-                        <span>💡 Tip: Select a registered vendor from the dropdown menu or click "Browse Supplier Table" above.</span>
+                    ) : supplierName.trim() ? (
+                      <div className="p-2.5 bg-white dark:bg-[#0E1628] border border-indigo-200 dark:border-purple-800/60 rounded-xl flex items-center justify-between gap-2 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-indigo-600 dark:text-purple-400 shrink-0" />
+                          <span className="font-bold text-slate-900 dark:text-white text-xs">
+                            {supplierName.trim()}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold">
+                            Direct / Custom Supplier
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSupplierId('');
+                            setSupplierName('');
+                          }}
+                          className="text-xs text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 font-semibold cursor-pointer"
+                        >
+                          Clear
+                        </button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Supplier Invoice & Shipment Notes */}
@@ -1835,7 +1814,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
 
                                 <div className="text-right">
                                   <div className="font-mono font-bold text-slate-900 dark:text-white">
-                                    {currencySymbol} {formatStockPrice(prod.purchase_price || prod.purchasePrice || 0)}
+                                    {currencySymbol} {formatStockPrice(prod.costPrice ?? prod.cost_price ?? 0)}
                                   </div>
                                   <span className="text-[10px] text-blue-600 dark:text-purple-400 font-bold hover:underline">Select Article →</span>
                                 </div>
@@ -2012,10 +1991,10 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                           <div className="sm:col-span-4">
                             {(() => {
                               const defaultCost = parseFloat(
-                                selectedProduct.purchase_price || selectedProduct.purchasePrice || 0
+                                String(selectedProduct.costPrice ?? selectedProduct.cost_price ?? 0)
                               );
                               const retail = parseFloat(
-                                selectedProduct.min_sale_price || selectedProduct.minSalePrice || 0
+                                String(selectedProduct.minSalePrice ?? selectedProduct.min_sale_price ?? 0)
                               );
                               const currentCost =
                                 typeof itemUnitCost === 'number'
@@ -2561,7 +2540,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                 <Search className="w-4 h-4 text-purple-600 dark:text-purple-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Filter suppliers by name, phone, email, URL, or address..."
+                  placeholder="Filter suppliers by name, phone, or email..."
                   value={supplierSearchInModal}
                   onChange={(e) => setSupplierSearchInModal(e.target.value)}
                   className="w-full pl-[2.125rem] pr-8 py-2 bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-purple-800/80 rounded-xl outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 dark:focus:border-purple-500 font-medium text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs shadow-2xs"
@@ -2599,7 +2578,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                     <th className="py-2.5 px-3">Supplier / Vendor</th>
                     <th className="py-2.5 px-3">Phone</th>
                     <th className="py-2.5 px-3">Email</th>
-                    <th className="py-2.5 px-3">Website / URL</th>
                     <th className="py-2.5 px-3 text-center">Past Orders</th>
                     <th className="py-2.5 px-3 text-right">Action</th>
                   </tr>
@@ -2607,7 +2585,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                 <tbody className="divide-y divide-slate-100 dark:divide-purple-900/30">
                   {modalFilteredSuppliers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500 italic">
+                      <td colSpan={5} className="py-8 text-center text-slate-400 dark:text-slate-500 italic">
                         No suppliers match your search filter.
                       </td>
                     </tr>
@@ -2632,33 +2610,12 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                                 </span>
                               )}
                             </div>
-                            {sup.address && (
-                              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center mt-0.5">
-                                <MapPin className="w-2.5 h-2.5 mr-1 text-slate-400 dark:text-slate-500" />
-                                <span className="truncate max-w-xs">{sup.address}</span>
-                              </div>
-                            )}
                           </td>
                           <td className="py-3 px-3 font-mono text-slate-800 dark:text-slate-200">
                             {sup.phone || <span className="text-slate-400 dark:text-slate-600">-</span>}
                           </td>
                           <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-400">
                             {sup.email || <span className="text-slate-400 dark:text-slate-600">-</span>}
-                          </td>
-                          <td className="py-3 px-3">
-                            {sup.url ? (
-                              <a
-                                href={sup.url.startsWith('http') ? sup.url : `https://${sup.url}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-blue-600 dark:text-purple-300 hover:underline inline-flex items-center space-x-1 font-medium"
-                              >
-                                <Globe className="w-3 h-3 text-blue-500 dark:text-purple-300" />
-                                <span className="truncate max-w-[130px]">{sup.url.replace(/^https?:\/\//, '')}</span>
-                              </a>
-                            ) : (
-                              <span className="text-slate-400 dark:text-slate-600">-</span>
-                            )}
                           </td>
                           <td className="py-3 px-3 text-center">
                             <span className="px-2 py-0.5 bg-slate-100 dark:bg-purple-950/50 rounded text-slate-700 dark:text-purple-200 font-semibold font-mono border border-slate-200 dark:border-purple-900/50">
@@ -2842,7 +2799,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                           {prod.total_stock ?? prod.totalStock ?? 0}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
-                          {currencySymbol} {formatStockPrice(prod.purchase_price || prod.purchasePrice || 0)}
+                          {currencySymbol} {formatStockPrice(prod.costPrice ?? prod.cost_price ?? 0)}
                         </td>
                         <td className="py-2.5 px-3 text-right">
                           <button
@@ -2934,39 +2891,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Website / URL</label>
-                <input
-                  type="text"
-                  placeholder="https://www.vendor.com"
-                  value={quickSupplierUrl}
-                  onChange={(e) => setQuickSupplierUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-purple-800/80 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 dark:focus:border-purple-500 font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Office / City Address</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Shoe Market, Saddar, Karachi"
-                  value={quickSupplierAddress}
-                  onChange={(e) => setQuickSupplierAddress(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-purple-800/80 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 dark:focus:border-purple-500 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Notes / Terms</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Credit terms 30 days, primary sports shoes supplier"
-                  value={quickSupplierNotes}
-                  onChange={(e) => setQuickSupplierNotes(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-purple-800/80 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 dark:focus:border-purple-500 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
-                />
-              </div>
-
               <div className="px-5 py-3.5 -mx-5 -mb-5 mt-4 bg-slate-50 dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 border-t border-slate-200 dark:border-purple-800/80 flex items-center justify-end space-x-2">
                 <button
                   type="button"
@@ -3038,23 +2962,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                       {selectedPurchaseDetails.supplier_phone && (
                         <div>
                           <strong className="text-slate-700 dark:text-slate-300">Phone:</strong> {selectedPurchaseDetails.supplier_phone}
-                        </div>
-                      )}
-                      {selectedPurchaseDetails.supplier_url && (
-                        <div>
-                          <strong className="text-slate-700 dark:text-slate-300">Website:</strong>{' '}
-                          <a
-                            href={
-                              selectedPurchaseDetails.supplier_url.startsWith('http')
-                                ? selectedPurchaseDetails.supplier_url
-                                : `https://${selectedPurchaseDetails.supplier_url}`
-                            }
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 dark:text-purple-300 underline font-medium"
-                          >
-                            Visit Portal
-                          </a>
                         </div>
                       )}
                     </div>

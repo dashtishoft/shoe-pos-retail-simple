@@ -128,15 +128,15 @@ export const ThemeDropdown: React.FC<ThemeDropdownProps> = ({
             style={{ transformOrigin: dropdownAlign === 'right' ? 'top right' : 'top left' }}
             className={`absolute ${
               dropdownAlign === 'right' ? 'right-0 left-auto' : 'left-0 right-auto'
-            } top-full mt-2 w-48 sm:w-52 bg-white dark:bg-[#120726] border border-slate-200 dark:border-purple-400/40 rounded-xl shadow-2xl dark:shadow-[0_0_25px_rgba(147,51,234,0.25)] p-2 z-50 backdrop-blur-md list-none space-y-1`}
+            } top-full mt-2 w-48 sm:w-52 bg-white dark:bg-[#120726] border border-slate-200 dark:border-purple-400/40 rounded-xl shadow-2xl dark:shadow-[0_0_25px_rgba(147,51,234,0.25)] p-1.5 z-50 backdrop-blur-md list-none space-y-0.5`}
             role="menu"
             aria-orientation="vertical"
           >
-            <li className="px-2.5 py-1.5 border-b border-slate-100 dark:border-purple-800/40 mb-1 flex items-center justify-between">
+            <li className="px-2.5 py-1 border-b border-slate-100 dark:border-purple-800/40 mb-0.5 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-900 dark:text-purple-100">
                 Theme Preference
               </span>
-              <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-200 bg-purple-50 dark:bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-200 dark:border-purple-400/40 capitalize">
+              <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-200 bg-purple-50 dark:bg-purple-500/20 px-1.5 py-0.2 rounded-full border border-purple-200 dark:border-purple-400/40 capitalize">
                 {themeMode}
               </span>
             </li>
@@ -146,7 +146,7 @@ export const ThemeDropdown: React.FC<ThemeDropdownProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelect('light')}
-                className={`w-full flex items-center justify-between px-2.5 py-2 text-xs font-medium transition cursor-pointer rounded-lg ${
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-medium transition cursor-pointer rounded-lg ${
                   themeMode === 'light'
                     ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white font-semibold shadow-md shadow-purple-600/25 border border-purple-400/40 dark:shadow-[0_0_14px_rgba(147,51,234,0.3)]'
                     : 'text-slate-700 dark:text-purple-200 font-medium hover:bg-gradient-to-r hover:from-purple-600 hover:via-indigo-600 hover:to-purple-700 hover:text-white dark:hover:text-white dark:hover:bg-purple-500/25 group border border-transparent'
@@ -169,7 +169,7 @@ export const ThemeDropdown: React.FC<ThemeDropdownProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelect('dark')}
-                className={`w-full flex items-center justify-between px-2.5 py-2 text-xs font-medium transition cursor-pointer rounded-lg ${
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-medium transition cursor-pointer rounded-lg ${
                   themeMode === 'dark'
                     ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white font-semibold shadow-md shadow-purple-600/25 border border-purple-400/40 dark:shadow-[0_0_14px_rgba(147,51,234,0.3)]'
                     : 'text-slate-700 dark:text-purple-200 font-medium hover:bg-gradient-to-r hover:from-purple-600 hover:via-indigo-600 hover:to-purple-700 hover:text-white dark:hover:text-white dark:hover:bg-purple-500/25 group border border-transparent'
@@ -192,7 +192,7 @@ export const ThemeDropdown: React.FC<ThemeDropdownProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelect('system')}
-                className={`w-full flex items-center justify-between px-2.5 py-2 text-xs font-medium transition cursor-pointer rounded-lg ${
+                className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-medium transition cursor-pointer rounded-lg ${
                   themeMode === 'system'
                     ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white font-semibold shadow-md shadow-purple-600/25 border border-purple-400/40 dark:shadow-[0_0_14px_rgba(147,51,234,0.3)]'
                     : 'text-slate-700 dark:text-purple-200 font-medium hover:bg-gradient-to-r hover:from-purple-600 hover:via-indigo-600 hover:to-purple-700 hover:text-white dark:hover:text-white dark:hover:bg-purple-500/25 group border border-transparent'

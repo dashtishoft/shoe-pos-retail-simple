@@ -136,18 +136,18 @@ export const STRICT_FOOTWEAR_INVALID_ALERT =
 
 export interface BrandSuggestionMatch {
   suggestedName: string;
-  matchedId: number | null;
-  matchedName: string | null;
-  isExisting: boolean;
+  matchedId?: number | null;
+  matchedName?: string | null;
+  isExisting?: boolean;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   isUnknown: boolean;
 }
 
 export interface CategorySuggestionMatch {
   suggestedName: AllowedCategory;
-  matchedId: number | null;
-  matchedName: string | null;
-  isExisting: boolean;
+  matchedId?: number | null;
+  matchedName?: string | null;
+  isExisting?: boolean;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
@@ -298,10 +298,12 @@ export function sanitizeShoeTitle(rawTitle: string): string {
  */
 export function matchBrand(
   suggestedBrand: string,
-  existingBrands: { id: number; name: string }[]
+  existingBrands: (string | { id?: number; name: string })[] = []
 ): BrandSuggestionMatch {
   const cleanSuggested = (suggestedBrand || '').trim();
   const lowerSuggested = cleanSuggested.toLowerCase();
+
+  const brandNames = existingBrands.map((b) => (typeof b === 'string' ? b : b.name));
 
   // Check if brand is explicitly unknown
   const isUnknown =
@@ -313,14 +315,12 @@ export function matchBrand(
     lowerSuggested === 'none';
 
   if (isUnknown) {
-    // Check if store has a "Local", "Unbranded", or "Generic" brand
-    const unbrandedMatch = existingBrands.find(
-      (b) => b.name.toLowerCase() === 'local' || b.name.toLowerCase() === 'unbranded' || b.name.toLowerCase() === 'generic'
+    const unbrandedMatch = brandNames.find(
+      (b) => b.toLowerCase() === 'local' || b.toLowerCase() === 'unbranded' || b.toLowerCase() === 'generic'
     );
     return {
-      suggestedName: unbrandedMatch?.name || 'Local',
-      matchedId: unbrandedMatch ? unbrandedMatch.id : null,
-      matchedName: unbrandedMatch ? unbrandedMatch.name : null,
+      suggestedName: unbrandedMatch || 'Local',
+      matchedName: unbrandedMatch || 'Local',
       isExisting: Boolean(unbrandedMatch),
       confidence: 'LOW',
       isUnknown: true,
@@ -328,12 +328,11 @@ export function matchBrand(
   }
 
   // 1. Exact match (case-insensitive)
-  const exact = existingBrands.find((b) => b.name.trim().toLowerCase() === lowerSuggested);
+  const exact = brandNames.find((b) => b.trim().toLowerCase() === lowerSuggested);
   if (exact) {
     return {
-      suggestedName: exact.name,
-      matchedId: exact.id,
-      matchedName: exact.name,
+      suggestedName: exact,
+      matchedName: exact,
       isExisting: true,
       confidence: 'HIGH',
       isUnknown: false,
@@ -345,8 +344,8 @@ export function matchBrand(
     .replace(/\b(shoes|footwear|inc|corporation|originals|sportswear|sport|apparel)\b/gi, '')
     .trim();
 
-  for (const b of existingBrands) {
-    const bLower = b.name.trim().toLowerCase();
+  for (const b of brandNames) {
+    const bLower = b.trim().toLowerCase();
     const strippedB = bLower
       .replace(/\b(shoes|footwear|inc|corporation|originals|sportswear|sport|apparel)\b/gi, '')
       .trim();
@@ -358,9 +357,8 @@ export function matchBrand(
       bLower.startsWith(lowerSuggested + ' ')
     ) {
       return {
-        suggestedName: b.name,
-        matchedId: b.id,
-        matchedName: b.name,
+        suggestedName: b,
+        matchedName: b,
         isExisting: true,
         confidence: 'HIGH',
         isUnknown: false,
@@ -368,10 +366,9 @@ export function matchBrand(
     }
   }
 
-  // 3. No match found -> Return new brand suggestion that can be created
+  // 3. No match found -> Return new brand suggestion that can be typed
   return {
     suggestedName: cleanSuggested,
-    matchedId: null,
     matchedName: null,
     isExisting: false,
     confidence: 'MEDIUM',
@@ -381,33 +378,30 @@ export function matchBrand(
 
 /**
  * Intelligent comparison of AI-suggested Category against existing store categories.
- * Enforces strictly ONE single category from the 7 options:
- * Enforces strictly ONE single category from the 9 retail footwear options:
- * Formal Dress Shoes, Casual Shoes, Sandals & Chappals, Closed Flats,
- * Flat Sandals, Heeled Sandals, Closed Heels & Pumps, Boys Footwear, Girls Footwear.
+ * Enforces strictly ONE single category from the 9 retail footwear options.
  */
 export function matchCategory(
   suggestedCategory: string,
-  existingCategories: { id: number; name: string }[]
+  existingCategories: (string | { id?: number; name: string })[] = []
 ): CategorySuggestionMatch {
   const singleCategory = enforceSingleCategory(suggestedCategory);
   const lowerSingle = singleCategory.toLowerCase();
+  const categoryNames = existingCategories.map((c) => (typeof c === 'string' ? c : c.name));
 
   // 1. Exact match (case-insensitive)
-  const exact = existingCategories.find((c) => c.name.trim().toLowerCase() === lowerSingle);
+  const exact = categoryNames.find((c) => c.trim().toLowerCase() === lowerSingle);
   if (exact) {
     return {
       suggestedName: singleCategory,
-      matchedId: exact.id,
-      matchedName: exact.name,
+      matchedName: exact,
       isExisting: true,
       confidence: 'HIGH',
     };
   }
 
   // 2. Singular/plural and direct affinity matches
-  for (const c of existingCategories) {
-    const cLower = c.name.trim().toLowerCase();
+  for (const c of categoryNames) {
+    const cLower = c.trim().toLowerCase();
     if (
       cLower === lowerSingle ||
       cLower.includes(lowerSingle) ||
@@ -425,18 +419,16 @@ export function matchCategory(
     ) {
       return {
         suggestedName: singleCategory,
-        matchedId: c.id,
-        matchedName: c.name,
+        matchedName: c,
         isExisting: true,
         confidence: 'HIGH',
       };
     }
   }
 
-  // 3. No existing category match -> Suggest the new single category
+  // 3. Return single category suggestion
   return {
     suggestedName: singleCategory,
-    matchedId: null,
     matchedName: null,
     isExisting: false,
     confidence: 'MEDIUM',
@@ -450,8 +442,8 @@ export function matchCategory(
  */
 export async function analyzeProductImageWithGemini(
   imageSource: string,
-  existingBrands: { id: number; name: string }[],
-  existingCategories: { id: number; name: string }[]
+  existingBrands: (string | { id?: number; name: string })[] = [],
+  existingCategories: (string | { id?: number; name: string })[] = []
 ): Promise<AiProductAnalysisResult> {
   const ai = getGeminiClient();
   const imagePart = await resolveImageToPart(imageSource);

@@ -24,10 +24,16 @@ export interface PricingSettingsInput {
   pricing_mode?: PricingMode | string;
   fixedProfitMargin?: number | string;
   fixed_profit_margin?: number | string;
+  fixedProfitAmount?: number | string;
+  fixed_profit_amount?: number | string;
   minProfitMargin?: number | string;
   min_profit_margin?: number | string;
+  minProfitAmount?: number | string;
+  min_profit_amount?: number | string;
   maxProfitMargin?: number | string;
   max_profit_margin?: number | string;
+  maxProfitAmount?: number | string;
+  max_profit_amount?: number | string;
   currencySymbol?: string;
   currency_symbol?: string;
 }
@@ -50,9 +56,7 @@ export interface CalculatedProductPricing {
  */
 export function roundToCurrency(val: number): number {
   if (typeof val !== 'number' || isNaN(val) || val <= 0) return 0;
-  // Round to nearest whole number if fractional part is negligible, else 2 decimals
-  const rounded = Math.round(val * 100) / 100;
-  return Number.isInteger(rounded) ? rounded : Number(rounded.toFixed(2));
+  return Math.round(val);
 }
 
 /**

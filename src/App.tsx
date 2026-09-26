@@ -11,8 +11,6 @@ import { SalesReturnView } from './components/returns/SalesReturnView.tsx';
 import { CustomerManagement } from './components/customers/CustomerManagement.tsx';
 import { ReportsDashboard } from './components/reports/ReportsDashboard.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
-import { BrandManagement } from './components/brands/BrandManagement.tsx';
-import { CategoryManagement } from './components/categories/CategoryManagement.tsx';
 import { SupplierManagement } from './components/suppliers/SupplierManagement.tsx';
 import { DashboardOverview } from './components/dashboard/DashboardOverview.tsx';
 import { AuthModal } from './components/auth/AuthModal.tsx';
@@ -85,8 +83,6 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [catalogBrandFilter, setCatalogBrandFilter] = useState<number | undefined>(undefined);
-  const [catalogCategoryFilter, setCatalogCategoryFilter] = useState<number | undefined>(undefined);
   const [selectedSupplierForPurchase, setSelectedSupplierForPurchase] = useState<{ id?: number; name?: string } | null>(null);
 
   const handleTabChange = (targetTab: string) => {
@@ -350,14 +346,23 @@ export default function App() {
     }
   };
 
-  const handleSettingsUpdated = async () => {
+  const handleSettingsUpdated = async (updatedSettings?: any) => {
     try {
+      if (updatedSettings) {
+        setCompanySettings(updatedSettings);
+        try {
+          localStorage.setItem('cached_company_settings', JSON.stringify(updatedSettings));
+        } catch {}
+      }
       const [settingsRes, statusRes] = await Promise.all([
         api.settings.get().catch(() => null),
         api.install.status().catch(() => null),
       ]);
       if (settingsRes?.settings) {
         setCompanySettings(settingsRes.settings);
+        try {
+          localStorage.setItem('cached_company_settings', JSON.stringify(settingsRes.settings));
+        } catch {}
         const resolvedName =
           settingsRes.settings.name ||
           settingsRes.settings.company_name ||
@@ -616,32 +621,6 @@ export default function App() {
                     <ProductManagement
                       currentUser={currentUser}
                       companySettings={companySettings}
-                      initialBrandId={catalogBrandFilter}
-                      initialCategoryId={catalogCategoryFilter}
-                    />
-                  )}
-
-                  {currentTab === 'brands' && (
-                    <BrandManagement
-                      currentUser={currentUser}
-                      companySettings={companySettings}
-                      onNavigateToInventory={(brandId) => {
-                        setCatalogBrandFilter(brandId);
-                        setCatalogCategoryFilter(undefined);
-                        handleTabChange('inventory');
-                      }}
-                    />
-                  )}
-
-                  {currentTab === 'categories' && (
-                    <CategoryManagement
-                      currentUser={currentUser}
-                      companySettings={companySettings}
-                      onNavigateToInventory={(categoryId) => {
-                        setCatalogBrandFilter(undefined);
-                        setCatalogCategoryFilter(categoryId);
-                        handleTabChange('inventory');
-                      }}
                     />
                   )}
 
@@ -729,13 +708,13 @@ export default function App() {
             </main>
 
             {/* APPLICATION FOOTER */}
-            <footer className="py-2.5 px-6 border-t border-[#E2E8F0] dark:border-[#1A263D] bg-white dark:bg-[#070B14] text-center text-xs font-medium text-slate-500 dark:text-slate-400 tracking-wide shrink-0 no-print select-none transition-colors">
+            <footer className="px-4 py-2.5 border border-indigo-500/20 bg-white/95 dark:bg-white/10 backdrop-blur-lg shadow-lg transition-colors duration-500 text-center text-xs font-medium text-slate-800 dark:text-slate-100 tracking-wide shrink-0 no-print select-none">
               Designed & Developed by{' '}
               <a
                 href="https://portpolio-eight-pi.vercel.app/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-bold text-purple-600 dark:text-purple-400 hover:underline transition-colors"
+                className="font-bold text-slate-900 dark:text-white hover:text-indigo-500 dark:hover:text-indigo-300 hover:underline transition-colors"
               >
                 SarbaazSoft
               </a>{' '}

@@ -1539,8 +1539,9 @@ aside {
     color: #ffffff !important;
   }
   .dark .card-footer {
-    background: linear-gradient(to right, rgb(88 28 135 / 0.9), rgb(30 27 75 / 0.85), rgb(15 23 42)) !important;
-    border-color: rgba(107, 33, 168, 0.8) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(99, 102, 241, 0.2) !important;
+    backdrop-filter: blur(16px) !important;
     color: #ffffff !important;
   }
 

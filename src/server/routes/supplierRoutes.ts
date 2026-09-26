@@ -28,13 +28,14 @@ router.get('/', requireAuth, async (req, res: Response) => {
       SELECT s.*,
              COALESCE(p_agg.total_purchases, 0)::int as total_purchases,
              COALESCE(p_agg.total_purchased_amount, 0)::numeric as total_purchased_amount,
+             p_agg.last_purchase_date as last_purchase_date,
              COALESCE(pr_agg.total_returns, 0)::int as total_returns,
              COALESCE(pr_agg.total_debit_amount, 0)::numeric as total_debit_amount,
              COALESCE(sp_agg.total_paid_amount, 0)::numeric as total_paid_amount,
              (COALESCE(p_agg.total_purchased_amount, 0) - COALESCE(pr_agg.total_debit_amount, 0) - COALESCE(sp_agg.total_paid_amount, 0))::numeric as net_payable_balance
       FROM suppliers s
       LEFT JOIN (
-        SELECT supplier_id, COUNT(id) as total_purchases, SUM(total_amount) as total_purchased_amount
+        SELECT supplier_id, COUNT(id) as total_purchases, SUM(total_amount) as total_purchased_amount, MAX(purchase_date) as last_purchase_date
         FROM purchases
         WHERE supplier_id IS NOT NULL
         GROUP BY supplier_id
@@ -57,7 +58,7 @@ router.get('/', requireAuth, async (req, res: Response) => {
 
     if (search && typeof search === 'string' && search.trim()) {
       params.push(`%${search.trim().toLowerCase()}%`);
-      query += ` AND (LOWER(s.name) LIKE $${params.length} OR s.phone LIKE $${params.length} OR LOWER(s.email) LIKE $${params.length} OR LOWER(s.url) LIKE $${params.length} OR LOWER(s.address) LIKE $${params.length})`;
+      query += ` AND (LOWER(s.name) LIKE $${params.length} OR s.phone LIKE $${params.length} OR LOWER(s.email) LIKE $${params.length})`;
     }
 
     query += ` ORDER BY s.id DESC`;
@@ -432,22 +433,19 @@ router.delete('/payments/:paymentId', requireAuth, requireAdmin, async (req: Aut
 // Create Supplier
 router.post('/', requireAuth, async (req, res: Response) => {
   try {
-    const { name, phone = '', email = '', address = '', url = '', notes = '' } = req.body;
+    const { name, phone = '', email = '' } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Supplier name is required.' });
     }
 
     const result = await pgClient.query(
-      `INSERT INTO suppliers (name, phone, email, address, url, notes, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `INSERT INTO suppliers (name, phone, email, updated_at)
+       VALUES ($1, $2, $3, NOW())
        RETURNING *`,
       [
         name.trim(),
         phone.trim(),
         email.trim(),
-        address.trim(),
-        url.trim(),
-        notes.trim(),
       ]
     );
 
@@ -461,7 +459,7 @@ router.post('/', requireAuth, async (req, res: Response) => {
 router.put('/:id', requireAuth, async (req, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { name, phone = '', email = '', address = '', url = '', notes = '' } = req.body;
+    const { name, phone = '', email = '' } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Supplier name is required.' });
@@ -469,16 +467,13 @@ router.put('/:id', requireAuth, async (req, res: Response) => {
 
     const result = await pgClient.query(
       `UPDATE suppliers SET 
-         name = $1, phone = $2, email = $3, address = $4, url = $5, notes = $6, updated_at = NOW()
-       WHERE id = $7
+         name = $1, phone = $2, email = $3, updated_at = NOW()
+       WHERE id = $4
        RETURNING *`,
       [
         name.trim(),
         phone.trim(),
         email.trim(),
-        address.trim(),
-        url.trim(),
-        notes.trim(),
         id,
       ]
     );

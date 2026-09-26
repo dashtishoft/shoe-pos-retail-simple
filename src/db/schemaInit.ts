@@ -63,42 +63,23 @@ export async function ensureDatabaseSchema(): Promise<void> {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS is_installed BOOLEAN DEFAULT false;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode TEXT DEFAULT 'NEGOTIABLE';
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_margin NUMERIC(5, 2) DEFAULT 30.00;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_amount NUMERIC(12, 2) DEFAULT 0.00;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_margin NUMERIC(5, 2) DEFAULT 15.00;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_amount NUMERIC(12, 2) DEFAULT 0.00;
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_margin NUMERIC(5, 2) DEFAULT 30.00;
-
-    CREATE TABLE IF NOT EXISTS brands (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      logo TEXT DEFAULT '',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-
-    ALTER TABLE brands ADD COLUMN IF NOT EXISTS logo TEXT DEFAULT '';
-
-    CREATE TABLE IF NOT EXISTS categories (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      low_stock_limit INTEGER DEFAULT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-
-    ALTER TABLE categories ADD COLUMN IF NOT EXISTS low_stock_limit INTEGER DEFAULT NULL;
-
-    -- Ensure default 'Local' brand exists (category table starts completely empty with zero categories)
-    INSERT INTO brands (name) VALUES ('Local') ON CONFLICT (name) DO NOTHING;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) DEFAULT 0.00;
 
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      brand_id INTEGER REFERENCES brands(id) ON DELETE SET NULL,
-      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      brand VARCHAR(100) NOT NULL DEFAULT 'Local',
+      category VARCHAR(100) NOT NULL DEFAULT 'Casual Shoes',
       sku TEXT NOT NULL UNIQUE,
       barcode TEXT NOT NULL UNIQUE,
       article TEXT DEFAULT '',
       primary_image_url TEXT DEFAULT '',
       description TEXT DEFAULT '',
-      purchase_price NUMERIC(12, 2) NOT NULL,
-      min_sale_price NUMERIC(12, 2) NOT NULL,
+      cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
       total_stock INTEGER NOT NULL DEFAULT 0,
       low_stock_limit INTEGER NOT NULL DEFAULT 5,
       active BOOLEAN NOT NULL DEFAULT true,
@@ -106,10 +87,104 @@ export async function ensureDatabaseSchema(): Promise<void> {
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
 
+    -- Ensure brand and category text columns exist on products
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) DEFAULT 'Local';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Casual Shoes';
+
+    -- Data Migration: Migrate any existing relational brand_id and category_id into plain-text columns
+    DO $$
+    BEGIN
+      -- Migrate brand from brands table if brand_id column exists
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='brand_id') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='brands') THEN
+          UPDATE products p 
+          SET brand = COALESCE((SELECT b.name FROM brands b WHERE b.id = p.brand_id), 'Local')
+          WHERE (p.brand IS NULL OR p.brand = '' OR p.brand = 'Local') AND p.brand_id IS NOT NULL;
+        END IF;
+        ALTER TABLE products DROP COLUMN IF EXISTS brand_id CASCADE;
+      END IF;
+
+      -- Migrate category from categories table if category_id column exists
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='category_id') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='categories') THEN
+          UPDATE products p 
+          SET category = COALESCE((SELECT c.name FROM categories c WHERE c.id = p.category_id), 'Casual Shoes')
+          WHERE (p.category IS NULL OR p.category = '' OR p.category = 'Casual Shoes') AND p.category_id IS NOT NULL;
+        END IF;
+        ALTER TABLE products DROP COLUMN IF EXISTS category_id CASCADE;
+      END IF;
+
+      -- Set sane defaults for any null or empty strings
+      UPDATE products SET brand = 'Local' WHERE brand IS NULL OR TRIM(brand) = '';
+      UPDATE products SET category = 'Casual Shoes' WHERE category IS NULL OR TRIM(category) = '';
+
+      -- Completely remove legacy brands and categories tables
+      DROP TABLE IF EXISTS brands CASCADE;
+      DROP TABLE IF EXISTS categories CASCADE;
+    END $$;
+
+    CREATE INDEX IF NOT EXISTS products_brand_idx ON products(brand);
+    CREATE INDEX IF NOT EXISTS products_category_idx ON products(category);
+
     ALTER TABLE products ADD COLUMN IF NOT EXISTS article TEXT DEFAULT '';
     ALTER TABLE products ADD COLUMN IF NOT EXISTS primary_image_url TEXT DEFAULT '';
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS max_sale_price NUMERIC(12, 2);
-    UPDATE products SET max_sale_price = min_sale_price WHERE max_sale_price IS NULL;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(12, 2) DEFAULT 0.00;
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='purchase_price') THEN
+        UPDATE products SET cost_price = purchase_price WHERE (cost_price IS NULL OR cost_price = 0) AND purchase_price IS NOT NULL;
+      END IF;
+    END $$;
+    ALTER TABLE products DROP COLUMN IF EXISTS purchase_price;
+
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS margin_type TEXT DEFAULT 'FIXED';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_calculation_method TEXT DEFAULT 'FIXED_AMOUNT';
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC(5, 2);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_amount NUMERIC(12, 2);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_min_margin NUMERIC(5, 2);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_max_margin NUMERIC(5, 2);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price INTEGER;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS min_sale_price INTEGER;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS max_sale_price INTEGER;
+
+    -- Data Migration for existing products: populate integer price fields if not set
+    DO $$
+    DECLARE
+      v_pricing_mode TEXT;
+      v_fixed_margin NUMERIC;
+      v_min_margin NUMERIC;
+      v_max_margin NUMERIC;
+    BEGIN
+      SELECT 
+        COALESCE(pricing_mode, 'FIXED'),
+        COALESCE(fixed_profit_margin, 30.00),
+        COALESCE(min_profit_margin, 15.00),
+        COALESCE(max_profit_margin, 30.00)
+      INTO v_pricing_mode, v_fixed_margin, v_min_margin, v_max_margin
+      FROM company_settings
+      LIMIT 1;
+
+      IF v_fixed_margin IS NULL THEN v_fixed_margin := 30.00; END IF;
+      IF v_min_margin IS NULL THEN v_min_margin := 15.00; END IF;
+      IF v_max_margin IS NULL THEN v_max_margin := 30.00; END IF;
+
+      UPDATE products
+      SET 
+        margin_type = COALESCE(margin_type, 'FIXED'),
+        sale_price = CASE 
+          WHEN sale_price IS NOT NULL AND sale_price > 0 THEN sale_price
+          ELSE ROUND(cost_price * (1 + v_fixed_margin / 100))::INTEGER
+        END,
+        min_sale_price = CASE 
+          WHEN min_sale_price IS NOT NULL AND min_sale_price > 0 THEN min_sale_price
+          ELSE ROUND(cost_price * (1 + v_min_margin / 100))::INTEGER
+        END,
+        max_sale_price = CASE 
+          WHEN max_sale_price IS NOT NULL AND max_sale_price > 0 THEN max_sale_price
+          ELSE ROUND(cost_price * (1 + v_max_margin / 100))::INTEGER
+        END
+      WHERE sale_price IS NULL OR min_sale_price IS NULL OR max_sale_price IS NULL;
+    END $$;
 
     CREATE INDEX IF NOT EXISTS products_barcode_idx ON products(barcode);
     CREATE INDEX IF NOT EXISTS products_sku_idx ON products(sku);
@@ -131,14 +206,14 @@ export async function ensureDatabaseSchema(): Promise<void> {
       name TEXT NOT NULL,
       phone TEXT DEFAULT '',
       email TEXT DEFAULT '',
-      address TEXT DEFAULT '',
-      url TEXT DEFAULT '',
-      notes TEXT DEFAULT '',
       balance NUMERIC(12, 2) DEFAULT 0.00,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
     ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS balance NUMERIC(12, 2) DEFAULT 0.00;
+    ALTER TABLE suppliers DROP COLUMN IF EXISTS address;
+    ALTER TABLE suppliers DROP COLUMN IF EXISTS url;
+    ALTER TABLE suppliers DROP COLUMN IF EXISTS notes;
 
     CREATE TABLE IF NOT EXISTS purchases (
       id SERIAL PRIMARY KEY,

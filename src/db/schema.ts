@@ -46,41 +46,36 @@ export const companySettings = pgTable('company_settings', {
   lowStockLimit: integer('low_stock_limit').default(5).notNull(),
   pricingMode: text('pricing_mode').default('NEGOTIABLE').notNull(),
   fixedProfitMargin: numeric('fixed_profit_margin', { precision: 5, scale: 2 }).default('30.00'),
+  fixedProfitAmount: numeric('fixed_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
   minProfitMargin: numeric('min_profit_margin', { precision: 5, scale: 2 }).default('15.00'),
+  minProfitAmount: numeric('min_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
   maxProfitMargin: numeric('max_profit_margin', { precision: 5, scale: 2 }).default('30.00'),
+  maxProfitAmount: numeric('max_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
   isInstalled: boolean('is_installed').default(false).notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-// Brands
-export const brands = pgTable('brands', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  logo: text('logo').default(''),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-// Categories
-export const categories = pgTable('categories', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  lowStockLimit: integer('low_stock_limit'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
 // Products (1 Product = 1 SKU = 1 Barcode = Total Stock)
+// Brand and Category are stored directly as plain text string fields
 export const products = pgTable('products', {
   id: serial('id').primaryKey(),
-  brandId: integer('brand_id').references(() => brands.id, { onDelete: 'set null' }),
-  categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  brand: text('brand').default('Local').notNull(),
+  category: text('category').default('Casual Shoes').notNull(),
   sku: text('sku').notNull().unique(),
   article: text('article').notNull(),
   barcode: text('barcode').notNull().unique(),
   description: text('description').default(''),
   primaryImageUrl: text('primary_image_url').default(''),
-  purchasePrice: numeric('purchase_price', { precision: 12, scale: 2 }).notNull(),
-  minSalePrice: numeric('min_sale_price', { precision: 12, scale: 2 }).notNull(),
-  maxSalePrice: numeric('max_sale_price', { precision: 12, scale: 2 }),
+  costPrice: numeric('cost_price', { precision: 12, scale: 2 }).notNull(),
+  marginType: text('margin_type').default('FIXED'),
+  profitCalculationMethod: text('profit_calculation_method').default('FIXED_AMOUNT'),
+  profitMargin: numeric('profit_margin', { precision: 5, scale: 2 }),
+  profitAmount: numeric('profit_amount', { precision: 12, scale: 2 }),
+  customMinMargin: numeric('custom_min_margin', { precision: 5, scale: 2 }),
+  customMaxMargin: numeric('custom_max_margin', { precision: 5, scale: 2 }),
+  salePrice: integer('sale_price'),
+  minSalePrice: integer('min_sale_price'),
+  maxSalePrice: integer('max_sale_price'),
   totalStock: integer('total_stock').default(0).notNull(),
   lowStockLimit: integer('low_stock_limit').default(5).notNull(),
   active: boolean('active').default(true).notNull(),
@@ -91,6 +86,8 @@ export const products = pgTable('products', {
     barcodeIdx: uniqueIndex('products_barcode_idx').on(table.barcode),
     skuIdx: uniqueIndex('products_sku_idx').on(table.sku),
     activeIdx: index('products_active_idx').on(table.active),
+    brandIdx: index('products_brand_idx').on(table.brand),
+    categoryIdx: index('products_category_idx').on(table.category),
   };
 });
 
@@ -115,9 +112,6 @@ export const suppliers = pgTable('suppliers', {
   name: text('name').notNull(),
   phone: text('phone').default(''),
   email: text('email').default(''),
-  address: text('address').default(''),
-  url: text('url').default(''),
-  notes: text('notes').default(''),
   balance: numeric('balance', { precision: 12, scale: 2 }).default('0.00'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -285,9 +279,7 @@ export const stockMovements = pgTable('stock_movements', {
 });
 
 // Relations
-export const productsRelations = relations(products, ({ one, many }) => ({
-  brand: one(brands, { fields: [products.brandId], references: [brands.id] }),
-  category: one(categories, { fields: [products.categoryId], references: [categories.id] }),
+export const productsRelations = relations(products, ({ many }) => ({
   stockMovements: many(stockMovements),
 }));
 

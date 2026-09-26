@@ -7,9 +7,30 @@ import type { AuthenticatedRequest } from '../auth.ts';
 
 const router = Router();
 
+let settingsColumnsVerified = false;
+
+async function ensureSettingsPricingColumns() {
+  if (settingsColumnsVerified) return;
+  try {
+    const reg = await pgClient.query<{ has_settings: boolean }>(
+      "SELECT (to_regclass('public.company_settings') IS NOT NULL) as has_settings"
+    );
+    if (!reg.rows[0]?.has_settings) return;
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'NEGOTIABLE'");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_margin NUMERIC(5, 2) NOT NULL DEFAULT 30.00");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    settingsColumnsVerified = true;
+  } catch (err) {
+    console.warn('Could not ensure settings pricing columns:', err);
+  }
+}
+
 // GET /api/settings - Public or Authenticated to get company settings
 router.get('/', async (_req: Request, res: Response) => {
   try {
+    await ensureSettingsPricingColumns();
     const result = await pgClient.query('SELECT * FROM company_settings LIMIT 1');
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Company settings not initialized.' });
@@ -55,10 +76,16 @@ router.get('/', async (_req: Request, res: Response) => {
         pricing_mode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
         fixedProfitMargin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
         fixed_profit_margin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
+        fixedProfitAmount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
+        fixed_profit_amount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
         minProfitMargin: parseFloat(s.min_profit_margin ?? '15') || 15,
         min_profit_margin: parseFloat(s.min_profit_margin ?? '15') || 15,
+        minProfitAmount: parseFloat(s.min_profit_amount ?? '0') || 0,
+        min_profit_amount: parseFloat(s.min_profit_amount ?? '0') || 0,
         maxProfitMargin: parseFloat(s.max_profit_margin ?? '30') || 30,
         max_profit_margin: parseFloat(s.max_profit_margin ?? '30') || 30,
+        maxProfitAmount: parseFloat(s.max_profit_amount ?? '0') || 0,
+        max_profit_amount: parseFloat(s.max_profit_amount ?? '0') || 0,
         isInstalled: Boolean(s.is_installed),
         is_installed: Boolean(s.is_installed),
         updatedAt: s.updated_at,
@@ -105,6 +132,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // PUT /api/settings - Update Company Settings (Admin Only)
 router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await ensureSettingsPricingColumns();
     const companyName = (req.body.company_name || req.body.companyName || req.body.name || '').trim();
     const companyPhone = (req.body.company_phone || req.body.companyPhone || req.body.phone || '').trim();
     const companyEmail = (req.body.company_email || req.body.companyEmail || req.body.email || '').trim();
@@ -126,10 +154,28 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
     const minProfitMargin = rawMinMargin !== undefined && rawMinMargin !== null && rawMinMargin !== ''
       ? Math.max(0, Math.min(100, parseFloat(rawMinMargin) || 0))
       : 10;
+    const rawMinAmount = req.body.min_profit_amount !== undefined ? req.body.min_profit_amount : req.body.minProfitAmount;
+    const minProfitAmount = rawMinAmount !== undefined && rawMinAmount !== null && rawMinAmount !== ''
+      ? Math.max(0, parseFloat(rawMinAmount) || 0)
+      : 0;
     const rawMaxMargin = req.body.max_profit_margin !== undefined ? req.body.max_profit_margin : req.body.maxProfitMargin;
     const maxProfitMargin = rawMaxMargin !== undefined && rawMaxMargin !== null && rawMaxMargin !== ''
       ? Math.max(0, Math.min(1000, parseFloat(rawMaxMargin) || 0))
       : 30;
+    const rawMaxAmount = req.body.max_profit_amount !== undefined ? req.body.max_profit_amount : req.body.maxProfitAmount;
+    const maxProfitAmount = rawMaxAmount !== undefined && rawMaxAmount !== null && rawMaxAmount !== ''
+      ? Math.max(0, parseFloat(rawMaxAmount) || 0)
+      : 0;
+    const rawFixedMargin = req.body.fixed_profit_margin !== undefined ? req.body.fixed_profit_margin : req.body.fixedProfitMargin;
+    const fixedProfitMargin = rawFixedMargin !== undefined && rawFixedMargin !== null && rawFixedMargin !== ''
+      ? Math.max(0, Math.min(1000, parseFloat(rawFixedMargin) || 0))
+      : 30;
+    const rawFixedAmount = req.body.fixed_profit_amount !== undefined ? req.body.fixed_profit_amount : req.body.fixedProfitAmount;
+    const fixedProfitAmount = rawFixedAmount !== undefined && rawFixedAmount !== null && rawFixedAmount !== ''
+      ? Math.max(0, parseFloat(rawFixedAmount) || 0)
+      : 0;
+    const rawPricingMode = String(req.body.pricing_mode || req.body.pricingMode || 'NEGOTIABLE').toUpperCase();
+    const pricingMode = rawPricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE';
     const currencyCode = req.body.currency || 'PKR';
 
     // 1. Validations: Company Profile
@@ -172,7 +218,9 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
          strn = $5, tax_id = $6, tax_number = $6, website = $7, logo = $8,
          currency_name = $9, currency = $10, currency_symbol = $11,
          barcode_prefix = $12, purchase_prefix = $13, invoice_prefix = $14,
-         invoice_footer = $15, low_stock_limit = $16, min_profit_margin = $17, max_profit_margin = $18, updated_at = NOW()
+         invoice_footer = $15, low_stock_limit = $16, min_profit_margin = $17, max_profit_margin = $18,
+         pricing_mode = $19, fixed_profit_margin = $20, fixed_profit_amount = $21,
+         min_profit_amount = $22, max_profit_amount = $23, updated_at = NOW()
        WHERE id = (SELECT id FROM company_settings LIMIT 1)
        RETURNING *`,
       [
@@ -194,18 +242,13 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
         lowStockLimit,
         minProfitMargin,
         maxProfitMargin,
+        pricingMode,
+        fixedProfitMargin,
+        fixedProfitAmount,
+        minProfitAmount,
+        maxProfitAmount,
       ]
     );
-
-    // Automatically synchronize products' minimum price to Cost Price + Minimum Profit Margin
-    try {
-      await pgClient.query(
-        'UPDATE products SET min_sale_price = ROUND(purchase_price * (1 + $1 / 100.0), 2) WHERE purchase_price > 0',
-        [minProfitMargin]
-      );
-    } catch (syncErr) {
-      console.warn('Could not batch synchronize products min_sale_price:', syncErr);
-    }
 
     const s: any = updateRes.rows[0];
     res.json({
@@ -245,10 +288,22 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
         invoiceFooter: s.invoice_footer,
         invoice_footer: s.invoice_footer,
         lowStockLimit: s.low_stock_limit,
+        pricingMode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
+        pricing_mode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
+        fixedProfitMargin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
+        fixed_profit_margin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
+        fixedProfitAmount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
+        fixed_profit_amount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
         minProfitMargin: parseFloat(s.min_profit_margin ?? '10') || 10,
         min_profit_margin: parseFloat(s.min_profit_margin ?? '10') || 10,
+        minProfitAmount: parseFloat(s.min_profit_amount ?? '0') || 0,
+        min_profit_amount: parseFloat(s.min_profit_amount ?? '0') || 0,
         maxProfitMargin: parseFloat(s.max_profit_margin ?? '30') || 30,
         max_profit_margin: parseFloat(s.max_profit_margin ?? '30') || 30,
+        maxProfitAmount: parseFloat(s.max_profit_amount ?? '0') || 0,
+        max_profit_amount: parseFloat(s.max_profit_amount ?? '0') || 0,
+        isInstalled: Boolean(s.is_installed),
+        is_installed: Boolean(s.is_installed),
         updatedAt: s.updated_at,
       },
     });
