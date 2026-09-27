@@ -18,6 +18,7 @@ import { UserProfileModal } from './components/auth/UserProfileModal.tsx';
 import { InstallWizard } from './components/install/InstallWizard.tsx';
 import { OfflineToastNotification } from './components/common/OfflineToastNotification.tsx';
 import { PublicLayout } from './components/common/PublicLayout.tsx';
+import { SammiAssistantView } from './components/chat/SammiAssistantView.tsx';
 import type { ActiveExchange } from './types.ts';
 
 function resolveTargetTab(requestedTab: string | undefined | null, user: any): string {
@@ -702,6 +703,15 @@ export default function App() {
                         }}
                       />
                     )
+                  )}
+
+                  {currentTab === 'assistant' && (
+                    <SammiAssistantView
+                      storeName={effectiveStoreName}
+                      currentUser={currentUser}
+                      companySettings={companySettings}
+                      onNavigateTab={(tab) => handleTabChange(tab)}
+                    />
                   )}
                 </motion.div>
               </AnimatePresence>

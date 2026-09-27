@@ -500,7 +500,7 @@ Category: [Exact Category from the 9 options]
 
 Suggested Title: [Model/Style Name without color words]`;
 
-  const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+  const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
   let rawText = '';
   let lastError: any = null;
 
@@ -530,10 +530,19 @@ Suggested Title: [Model/Style Name without color words]`;
       }
     } catch (err: any) {
       lastError = err;
-      const msg = err?.message || String(err);
-      console.warn(`Gemini model ${model} error during image analysis:`, msg);
+      const msg = String(err?.message || err || '');
+      const isRateLimit = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+      const isHighDemand = msg.includes('503') || msg.includes('high demand') || msg.includes('UNAVAILABLE');
+
+      if (isHighDemand) {
+        console.log(`[Product Image AI] Model ${model} high demand (503), switching to fallback model...`);
+      } else if (isRateLimit) {
+        console.log(`[Product Image AI] Model ${model} rate-limited (429), switching to fallback model...`);
+      } else {
+        console.log(`[Product Image AI] Model ${model} unavailable, trying fallback model...`);
+      }
       // Wait briefly before attempting next model fallback
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
 

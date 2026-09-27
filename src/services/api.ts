@@ -625,4 +625,19 @@ export const api = {
         body: JSON.stringify({ sql }),
       }),
   },
+  chat: {
+    send: (payload: {
+      messages: { role: 'user' | 'model'; text: string }[];
+      model?: string;
+      storeName?: string;
+    }) =>
+      request<{
+        reply: string;
+        modelUsed: string;
+        storeName: string;
+      }>('/chat', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+  },
 };

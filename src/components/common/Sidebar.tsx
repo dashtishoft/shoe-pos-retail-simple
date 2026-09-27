@@ -22,6 +22,8 @@ import {
   Download,
   PanelLeftClose,
   PanelLeftOpen,
+  Sparkles,
+  Bot,
 } from 'lucide-react';
 import { UserAvatar } from './UserAvatar.tsx';
 import { useTheme } from '../../context/ThemeContext.tsx';
@@ -125,6 +127,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'reports', label: 'Reports', icon: TrendingUp, shortcut: 'F6' },
         { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'F7' },
+      ],
+    },
+    {
+      header: 'HELP & SUPPORT',
+      items: [
+        { id: 'assistant', label: 'Sammi AI Assistant', icon: Sparkles },
       ],
     },
   ];

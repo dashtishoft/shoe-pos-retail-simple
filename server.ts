@@ -19,6 +19,7 @@ import settingsRoutes from './src/server/routes/settingsRoutes.ts';
 import installRoutes from './src/server/routes/installRoutes.ts';
 import backupRoutes from './src/server/routes/backupRoutes.ts';
 import notificationRoutes from './src/server/routes/notificationRoutes.ts';
+import chatRoutes from './src/server/routes/chatRoutes.ts';
 
 const app = express();
 const portArgIndex = process.argv.indexOf('--port');
@@ -216,12 +217,14 @@ app.use('/install', installRoutes);
 app.use(async (req, res, next) => {
   const reqPath = req.path;
 
-  // Whitelisted health and installation endpoints
+  // Whitelisted health, chat assistant and installation endpoints
   if (
     reqPath.startsWith('/api/health') ||
     reqPath.startsWith('/health') ||
     reqPath.startsWith('/api/install') ||
-    reqPath.startsWith('/install')
+    reqPath.startsWith('/install') ||
+    reqPath.startsWith('/api/chat') ||
+    reqPath.startsWith('/chat')
   ) {
     return next();
   }
@@ -230,7 +233,7 @@ app.use(async (req, res, next) => {
   const isApi = reqPath.startsWith('/api/') || [
     'auth', 'products', 'pos', 'purchases', 'purchase-returns',
     'returns', 'customers', 'suppliers', 'inventory',
-    'brands-categories', 'brands', 'categories', 'reports', 'settings', 'backup', 'notifications', 'v1'
+    'brands-categories', 'brands', 'categories', 'reports', 'settings', 'backup', 'notifications', 'chat', 'v1'
   ].some((prefix) => reqPath === `/${prefix}` || reqPath.startsWith(`/${prefix}/`));
 
   if (isApi) {
@@ -273,6 +276,7 @@ const apiRoutes: [string, any][] = [
   ['settings', settingsRoutes],
   ['backup', backupRoutes],
   ['notifications', notificationRoutes],
+  ['chat', chatRoutes],
 ];
 
 for (const [routePath, router] of apiRoutes) {

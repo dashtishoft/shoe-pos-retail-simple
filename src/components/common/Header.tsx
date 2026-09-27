@@ -41,6 +41,7 @@ import {
   PackagePlus,
   Printer,
   Barcode,
+  Sparkles,
 } from 'lucide-react';
 import { UserAvatar } from './UserAvatar.tsx';
 import { ThemeDropdown } from './ThemeDropdown.tsx';
