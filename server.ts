@@ -82,7 +82,7 @@ app.use('/api', async (_req, _res, next) => {
     if (!isDbConnected) {
       await Promise.race([
         dbInitPromise,
-        new Promise((resolve) => setTimeout(resolve, 1500)),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
       ]);
     }
   } catch (_) {}

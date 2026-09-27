@@ -313,7 +313,7 @@ export const PosItemSelection: React.FC<PosItemSelectionProps> = ({
                 )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                Article: {product.article || product.name} | Size: {product.size || (product.sku ? product.sku.split('-').pop() : '42')} {product.barcode && `| Barcode: ${product.barcode}`}
+                Article: {product.article || product.name} | Size: {product.size || '42'} {product.barcode && `| Barcode: ${product.barcode}`}
               </p>
             </div>
           </div>

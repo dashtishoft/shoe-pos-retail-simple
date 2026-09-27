@@ -1429,7 +1429,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                          Article: {prod.article || prod.name} | Size: {prod.size || (prod.sku ? prod.sku.split('-').pop() : '42')} | Barcode: {prod.barcode}
+                          Article: {prod.article || prod.name} | Size: {prod.size || '42'} | Barcode: {prod.barcode}
                         </p>
                       </div>
                     </div>
@@ -1495,7 +1495,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <span className="font-bold">{lastScannedFeedback.message}:</span>
                   <span className="font-extrabold text-slate-900 dark:text-white">{lastScannedFeedback.article}</span>
-                  <span className="text-[11px] font-mono opacity-90">({lastScannedFeedback.sku})</span>
                 </div>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white">
                   Beep ✓ Added
@@ -1707,7 +1706,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           )}
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                          Article: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.article || item.name}</strong> | Size: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.size || (item.sku ? item.sku.split('-').pop() : '42')}</strong> | Barcode: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.barcode}</strong>
+                          Article: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.article || item.name}</strong> | Size: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.size || '42'}</strong> | Barcode: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.barcode}</strong>
                         </div>
 
                         {/* Visual Warning: Price below configured minimum profit margin */}

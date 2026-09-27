@@ -219,7 +219,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
             Product Inventory &amp; Catalog
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-purple-200/80 font-medium mt-0.5">
-            1 Product = 1 SKU = 1 Barcode = Total Stock
+            1 Product = 1 Barcode = Total Stock
           </p>
         </div>
 
@@ -260,7 +260,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
           icon={Boxes}
           iconColor="blue"
           valueClassName="font-mono text-slate-900 dark:text-white"
-          subtext={<span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">Unique SKUs active</span>}
+          subtext={<span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">Active catalog items</span>}
           loading={isLoading}
           delay={0}
           duration={1200}
@@ -323,7 +323,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
           <Search className="w-4 h-4 text-purple-600 dark:text-purple-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search by article, SKU, or barcode..."
+            placeholder="Search by article or barcode..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="app-input w-full pl-[2.125rem] pr-8 py-2.5 text-xs font-medium dark:bg-slate-900/80 dark:border-purple-800/60 dark:text-white dark:placeholder-slate-400"
@@ -507,18 +507,10 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                         )}
                       </td>
 
-                      {/* Article & SKU */}
+                      {/* Article */}
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900 dark:text-white text-sm">
                           {p.article || p.name}
-                        </div>
-                        <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-2">
-                          <span>
-                            SKU:{' '}
-                            <strong className="font-semibold text-slate-700 dark:text-slate-200">
-                              {p.sku}
-                            </strong>
-                          </span>
                         </div>
                       </td>
 
@@ -552,7 +544,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                         <div
                           onClick={() => handleOpenBarcodeTool(p)}
                           className="flex flex-col items-start cursor-pointer group"
-                          title={`Click to generate & print barcode labels for SKU ${p.sku}`}
+                          title={`Click to generate & print barcode labels for ${p.article || p.barcode}`}
                         >
                           <div className="group-hover:opacity-85 transition">
                             <BarcodeSvg

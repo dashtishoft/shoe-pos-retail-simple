@@ -182,7 +182,6 @@ export const FinancialSummaryPrintModal: React.FC<FinancialSummaryPrintModalProp
                         <tr key={i}>
                           <td className="py-2 px-3">
                             <span className="font-semibold text-slate-900 dark:text-white">{ts.article || ts.productName || ts.name}</span>
-                            {ts.sku && <span className="ml-1.5 text-[10px] text-slate-400 font-mono">({ts.sku})</span>}
                           </td>
                           <td className="py-2 px-3 text-center font-mono font-bold">{ts.totalQuantitySold || ts.unitsSold || 0}</td>
                           <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">

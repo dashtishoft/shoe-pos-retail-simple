@@ -1664,7 +1664,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                       <div className="flex items-center space-x-2">
                         <span className="font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider flex items-center space-x-1.5">
                           <Barcode className="w-4 h-4 text-blue-600 dark:text-cyan-400" />
-                          <span>Product Input (Barcode, Article Name, or SKU)</span>
+                          <span>Product Input (Barcode or Article Name)</span>
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-cyan-400 border border-blue-200/80 dark:border-cyan-500/30">
                           Universal Supply
@@ -1694,7 +1694,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                     {/* Input Field: Accepts Barcode, Article, or SKU */}
                     <div className="relative">
                       <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                        Scan Barcode or Search Article Name / SKU:
+                        Scan Barcode or Search Article Name:
                       </label>
 
                       <div className="relative">
@@ -1705,7 +1705,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                         <input
                           ref={productInputRef}
                           type="text"
-                          placeholder="Scan Barcode or search Article / SKU (F2 to focus)..."
+                          placeholder="Scan Barcode or search Article (F2 to focus)..."
                           value={productQuery}
                           onChange={(e) => handleProductInputChange(e.target.value)}
                           onFocus={() => {
@@ -1798,7 +1798,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                                     </div>
 
                                     <div className="flex items-center space-x-3 text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                                      <span>SKU: {prod.sku}</span>
                                       {prod.barcode && (
                                         <span className="flex items-center text-blue-600 dark:text-cyan-400 font-medium">
                                           <Barcode className="w-3 h-3 mr-0.5" />
@@ -1854,7 +1853,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                                 )}
                               </div>
                               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-600 dark:text-slate-400 font-mono mt-0.5">
-                                <span>SKU: {selectedProduct.sku}</span>
                                 {selectedProduct.barcode && <span>Barcode: {selectedProduct.barcode}</span>}
                                 <span>Current Stock: {selectedProduct.total_stock ?? selectedProduct.totalStock ?? 0} pairs</span>
                               </div>
@@ -2126,7 +2124,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                       <thead className="bg-white dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 text-slate-600 dark:text-white font-semibold border-b border-slate-200 dark:border-purple-800/80">
                         <tr>
                           <th className="py-2.5 px-3">#</th>
-                          <th className="py-2.5 px-3">Article & SKU</th>
+                          <th className="py-2.5 px-3">Article</th>
                           <th className="py-2.5 px-3 text-center">Quantity (Pairs)</th>
                           <th className="py-2.5 px-3 text-right">Unit Cost</th>
                           <th className="py-2.5 px-3 text-right">Subtotal</th>
@@ -2137,7 +2135,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                         {items.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500 italic">
-                              No footwear items added yet. Scan barcode or search article/SKU above to add.
+                              No footwear items added yet. Scan barcode or search article above to add.
                             </td>
                           </tr>
                         ) : (
@@ -2146,9 +2144,11 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                               <td className="py-2.5 px-3 text-slate-400 dark:text-slate-500 font-mono">{idx + 1}</td>
                               <td className="py-2.5 px-3">
                                 <div className="font-bold text-slate-900 dark:text-white">{item.article}</div>
-                                <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                                  SKU: {item.sku} {item.barcode ? `| Barcode: ${item.barcode}` : ''}
-                                </div>
+                                {item.barcode && (
+                                  <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                                    Barcode: {item.barcode}
+                                  </div>
+                                )}
                               </td>
                               <td className="py-2.5 px-3 text-center">
                                 <div className="inline-flex items-center space-x-1">
@@ -2300,7 +2300,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                       <thead className="bg-white dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 text-slate-500 dark:text-white font-semibold border-b border-slate-200 dark:border-purple-800/80 text-[11px]">
                         <tr>
                           <th className="py-2 px-3">#</th>
-                          <th className="py-2 px-3">Article & SKU</th>
+                          <th className="py-2 px-3">Article</th>
                           <th className="py-2 px-3 text-center">Pairs</th>
                           <th className="py-2 px-3 text-right">Unit Price</th>
                           <th className="py-2 px-3 text-right">Subtotal</th>
@@ -2312,7 +2312,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                             <td className="py-2 px-3 text-slate-400 font-mono">{idx + 1}</td>
                             <td className="py-2 px-3">
                               <span className="font-bold text-slate-900 dark:text-white">{item.article}</span>
-                              <span className="ml-2 font-mono text-[10px] text-slate-500 dark:text-slate-400">({item.sku})</span>
                             </td>
                             <td className="py-2 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">
                               {item.quantity}
@@ -2691,7 +2690,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                 <Search className="w-4 h-4 text-purple-600 dark:text-purple-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Search footwear by article, barcode, or SKU..."
+                  placeholder="Search footwear by article or barcode..."
                   value={catalogModalSearch}
                   onChange={(e) => setCatalogModalSearch(e.target.value)}
                   className="w-full pl-[2.125rem] pr-8 py-2 bg-slate-50 dark:bg-[#0B1120] border border-slate-200 dark:border-purple-800/80 rounded-xl outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500 dark:focus:border-purple-500 font-medium text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs shadow-2xs"
@@ -2749,7 +2748,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                   <tr>
                     <th className="py-2.5 px-3">Article / Shoe</th>
                     <th className="py-2.5 px-3">Brand & Category</th>
-                    <th className="py-2.5 px-3">SKU</th>
                     <th className="py-2.5 px-3">Barcode</th>
                     <th className="py-2.5 px-3 text-center">In Store</th>
                     <th className="py-2.5 px-3 text-right">Standard Cost</th>
@@ -2759,7 +2757,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                 <tbody className="divide-y divide-slate-100 dark:divide-purple-900/30">
                   {modalFilteredProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-400 dark:text-slate-500 italic">
+                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500 italic">
                         No products match your catalog filter.
                       </td>
                     </tr>
@@ -2793,7 +2791,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                             </span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300">{prod.sku}</td>
                         <td className="py-2.5 px-3 font-mono text-blue-600 dark:text-purple-300 font-semibold">{prod.barcode}</td>
                         <td className="py-2.5 px-3 text-center font-bold font-mono text-slate-800 dark:text-slate-200">
                           {prod.total_stock ?? prod.totalStock ?? 0}
@@ -3050,7 +3047,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                         <thead className="bg-slate-50 dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 text-slate-700 dark:text-white font-bold uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-purple-800/80">
                           <tr>
                             <th className="py-2 px-3">Article</th>
-                            <th className="py-2 px-3">SKU / Barcode</th>
+                            <th className="py-2 px-3">Barcode</th>
                             <th className="py-2 px-3 text-center">Pairs</th>
                             <th className="py-2 px-3 text-right">Unit Price</th>
                             <th className="py-2 px-3 text-right">Subtotal</th>
@@ -3063,7 +3060,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                                 {it.article || it.product_name}
                               </td>
                               <td className="py-2 px-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                                {it.sku}
+                                {it.barcode || '---'}
                               </td>
                               <td className="py-2 px-3 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
                                 {it.quantity}

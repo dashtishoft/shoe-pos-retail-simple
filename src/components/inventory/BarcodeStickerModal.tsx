@@ -65,7 +65,7 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
       showCategory: true,
       showArticle: true,
       showPrice: true,
-      showSku: true,
+      showSku: false,
       showBarcodeText: true,
       labelSize: '50x30',
     };
@@ -358,7 +358,6 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
                   { key: 'showCategory', label: 'Category' },
                   { key: 'showArticle', label: 'Article / Model' },
                   { key: 'showPrice', label: 'Price / M.R.P.' },
-                  { key: 'showSku', label: 'SKU Code' },
                   { key: 'showBarcodeText', label: 'Barcode Digits' },
                 ].map((item) => {
                   const isChecked = options[item.key as keyof StickerCustomOptions] !== false;
@@ -487,13 +486,6 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
                 {options.showArticle && (
                   <p className="text-xs font-black text-black truncate mt-0.5">{articleName}</p>
                 )}
-
-                {/* SKU */}
-                {options.showSku && (
-                  <div className="flex items-center justify-center mt-0.5">
-                    <span className="text-[9.5px] font-mono text-slate-600">SKU: {product.sku}</span>
-                  </div>
-                )}
               </div>
 
               {/* Barcode */}
@@ -586,13 +578,6 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
             {options.showArticle && (
               <div style={{ fontSize: '8.5px', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', lineHeight: 1.1 }}>
                 {articleName}
-              </div>
-            )}
-
-            {/* SKU */}
-            {options.showSku && (
-              <div style={{ fontSize: '7.5px', fontFamily: 'monospace', textAlign: 'center' }}>
-                <span>SKU: {product.sku}</span>
               </div>
             )}
 

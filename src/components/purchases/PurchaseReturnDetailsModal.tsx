@@ -188,9 +188,9 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
                       <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-[#131D33]/60 transition">
                         <td className="p-2.5">
                           <p className="font-bold text-slate-900 dark:text-white">{item.article || item.product_name || item.productName}</p>
-                          {(item.sku || item.barcode) && (
+                          {item.barcode && (
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                              {item.sku ? `SKU: ${item.sku}` : ''} {item.barcode ? `| Barcode: ${item.barcode}` : ''}
+                              Barcode: {item.barcode}
                             </p>
                           )}
                         </td>

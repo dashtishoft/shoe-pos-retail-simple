@@ -230,7 +230,6 @@ export const SalesReturnView: React.FC<SalesReturnViewProps> = ({
                     <tr key={item.id} className="hover:bg-indigo-50/20 dark:hover:bg-purple-950/30 transition-colors">
                       <td className="py-3 px-3">
                         <div className="font-bold text-gray-900 dark:text-white">{item.article || item.product_name}</div>
-                        <div className="text-[11px] font-mono text-indigo-600 dark:text-purple-300 font-semibold">SKU: {item.product_sku}</div>
                       </td>
 
                       <td className="py-3 px-3 text-center font-mono font-medium text-gray-800 dark:text-purple-200">

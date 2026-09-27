@@ -647,9 +647,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         {prod.name}
                       </div>
                       <div className="mt-0.5 sm:mt-1 flex items-center gap-1.5 flex-wrap">
-                        {(prod.categoryName || prod.sku) && (
+                        {prod.categoryName && (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-cyan-400 border border-blue-200/80 dark:border-cyan-500/30 whitespace-nowrap">
-                            {prod.categoryName || prod.sku}
+                            {prod.categoryName}
                           </span>
                         )}
                         {prod.brandName && (

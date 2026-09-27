@@ -89,7 +89,7 @@ export const StockAdjustModal: React.FC<StockAdjustModalProps> = ({
           <div className="p-3.5 bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-xl">
             <div className="font-bold text-sm text-slate-900 dark:text-white">{product.article || product.name}</div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-              SKU: {product.sku} | Barcode: {product.barcode}
+              Barcode: {product.barcode}
             </div>
           </div>
 

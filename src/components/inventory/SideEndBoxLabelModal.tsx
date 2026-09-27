@@ -178,9 +178,6 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
         <div className="px-6 py-2.5 bg-purple-50/60 dark:bg-purple-950/40 border-b border-purple-100 dark:border-purple-900/40 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-purple-950 dark:text-purple-200 text-sm">{articleName}</span>
-            <span className="font-mono text-xs bg-white dark:bg-slate-900 px-2.5 py-0.5 rounded-lg border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-semibold shadow-2xs">
-              SKU: {sku}
-            </span>
             <span className="text-purple-600 dark:text-purple-400 font-medium">Brand: {brandName}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -398,14 +395,11 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
                       </h4>
                     </div>
 
-                    {/* Product Title: Article Name & SKU */}
+                    {/* Product Title: Article Name */}
                     <div className="text-center pt-2">
                       <h2 className="text-base sm:text-lg font-black leading-tight tracking-tight text-black line-clamp-2 uppercase">
                         {articleName}
                       </h2>
-                      <div className="text-xs font-mono font-black text-gray-800 mt-1">
-                        SKU: {sku}
-                      </div>
                     </div>
 
                     <div className="h-0.5 bg-black my-1"></div>
@@ -468,9 +462,6 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
                         <h2 className="text-sm font-black leading-tight text-black line-clamp-2 uppercase">
                           {articleName}
                         </h2>
-                        <div className="text-[11px] font-mono font-black text-gray-800">
-                          SKU: {sku}
-                        </div>
                         <div className="text-xs font-black text-black">
                           PRICE: {currencySymbol} {retailPrice}
                         </div>
@@ -596,16 +587,6 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
                   >
                     {articleName}
                   </div>
-                  <div
-                    style={{
-                      fontSize: '9pt',
-                      fontWeight: 700,
-                      fontFamily: 'monospace',
-                      marginTop: '1mm',
-                    }}
-                  >
-                    SKU: {sku}
-                  </div>
                 </div>
 
                 <div style={{ height: '0.5mm', backgroundColor: '#000', margin: '1mm 0' }}></div>
@@ -702,9 +683,6 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
                   <div style={{ maxWidth: '52mm' }}>
                     <div style={{ fontSize: '11pt', fontWeight: 900, textTransform: 'uppercase' }}>
                       {articleName}
-                    </div>
-                    <div style={{ fontSize: '8pt', fontFamily: 'monospace', fontWeight: 700 }}>
-                      SKU: {sku}
                     </div>
                     <div style={{ fontSize: '10pt', fontWeight: 900, marginTop: '1mm' }}>
                       PRICE: {currencySymbol} {retailPrice}

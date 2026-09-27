@@ -519,7 +519,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                 placeholder={
                   activeTab === 'sales_ledger'
                     ? 'Search invoice, customer...'
-                    : 'Search article or SKU...'
+                    : 'Search article or barcode...'
                 }
                 className="app-input w-full pl-9 pr-8 py-2 text-xs font-medium dark:bg-slate-900/80 dark:border-purple-800/60 dark:text-white dark:placeholder-slate-400 rounded-xl"
               />
@@ -748,9 +748,6 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                                 <div className="font-bold text-slate-900 dark:text-white">
                                   {ts.article || ts.productName || ts.name}
                                 </div>
-                                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                                  {ts.sku && <span className="text-blue-600 dark:text-purple-400">SKU: {ts.sku}</span>}
-                                </div>
                               </div>
                             </div>
                           </td>
@@ -816,9 +813,11 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                         <tr key={p.id} className="table-row-hover border-b border-slate-100 dark:border-slate-800/80">
                           <td className="py-2.5 px-3">
                             <div className="font-bold text-slate-900 dark:text-white">{p.article || p.name}</div>
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                              SKU: {p.sku || 'N/A'}
-                            </div>
+                            {p.barcode && (
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                Barcode: {p.barcode}
+                              </div>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-center font-bold font-mono">
                             <span
@@ -1194,7 +1193,7 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
               <thead className="bg-slate-50 dark:bg-gradient-to-r dark:from-purple-900 dark:via-indigo-950 dark:to-slate-900 font-semibold text-slate-700 dark:text-white text-[11px] border-b border-slate-200 dark:border-purple-800/80">
                 <tr>
                   <th className="py-2.5 px-3">Article &amp; Model</th>
-                  <th className="py-2.5 px-3">SKU &amp; Barcode</th>
+                  <th className="py-2.5 px-3">Barcode</th>
                   <th className="py-2.5 px-3 text-center">Remaining Stock</th>
                   <th className="py-2.5 px-3 text-center">Re-order Limit</th>
                   <th className="py-2.5 px-3 text-right">Floor Min Sale Price</th>
@@ -1230,8 +1229,11 @@ export const ReportsDashboard: React.FC<ReportsDashboardProps> = ({
                           <div className="text-[10px] text-slate-500 dark:text-slate-400">{p.brandName || 'Brand'}</div>
                         </td>
                         <td className="py-2.5 px-3 font-mono text-[11px]">
-                          <div className="text-blue-600 dark:text-purple-400 font-semibold">SKU: {p.sku || 'N/A'}</div>
-                          {p.barcode && <div className="text-slate-400 text-[10px]">BC: {p.barcode}</div>}
+                          {p.barcode ? (
+                            <div className="text-slate-700 dark:text-slate-300 font-semibold">{p.barcode}</div>
+                          ) : (
+                            <span className="text-slate-400">---</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-center font-bold font-mono">
                           <span

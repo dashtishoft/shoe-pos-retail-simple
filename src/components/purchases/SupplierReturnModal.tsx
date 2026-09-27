@@ -585,7 +585,7 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Type Shoe Article name, SKU, or scan barcode..."
+                  placeholder="Type Shoe Article name or scan barcode..."
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
                   className="w-full text-xs border border-slate-300 dark:border-[#1A263D] bg-white dark:bg-[#0B1120] text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded-xl pl-9 pr-3 py-2.5 focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
@@ -613,7 +613,7 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
                         <div>
                           <p className="font-bold text-slate-900 dark:text-white">{prod.article || prod.name}</p>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                            {prod.sku ? `SKU: ${prod.sku}` : ''} | Barcode: {prod.barcode || '-'}
+                            Barcode: {prod.barcode || '-'}
                           </p>
                         </div>
                         <div className="text-right">
@@ -676,10 +676,9 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
                               In Stock: {item.currentStock} pairs
                             </span>
                           </div>
-                          {(item.sku || item.barcode) && (
+                          {item.barcode && (
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                              {item.sku ? `SKU: ${item.sku}` : ''}{' '}
-                              {item.barcode ? `| Barcode: ${item.barcode}` : ''}
+                              Barcode: {item.barcode}
                             </p>
                           )}
                         </div>

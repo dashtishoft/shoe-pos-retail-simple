@@ -48,7 +48,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       try {
         data = JSON.parse(text);
       } catch {
-        data = { error: text.length > 200 ? text.slice(0, 200) : text };
+        // Strip HTML markup if the reverse proxy or server returned an HTML error page (e.g. 403 Forbidden or 502)
+        const stripped = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const cleanMsg = stripped.length > 200 ? stripped.slice(0, 200) : stripped;
+        data = { error: cleanMsg || `Server Error (${response.status})` };
       }
     }
 
@@ -56,7 +59,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       const errorMsg = data.error || data.message || `Server Error (${response.status})`;
 
       // Automatically clean up stale or expired tokens on 401 unauthorized
-      if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
+      if (
+        response.status === 401 &&
+        !endpoint.includes('/auth/login') &&
+        !endpoint.includes('/auth/register') &&
+        !endpoint.includes('/install')
+      ) {
         removeAuthToken();
         try {
           localStorage.removeItem('pos_current_user');

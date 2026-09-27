@@ -1193,10 +1193,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
               </div>
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white tracking-tight">
-                  {product ? `Edit Product: ${product.article || product.sku}` : 'Add Product Wizard'}
+                  {product ? `Edit Product: ${product.article || product.name || 'Footwear Item'}` : 'Add Product Wizard'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-purple-200/80">
-                  Step {currentStep} of 3 • 1 Product = 1 SKU = 1 Barcode = Inventory Count
+                  Step {currentStep} of 3 • 1 Product = 1 Barcode = Inventory Count
                 </p>
               </div>
             </div>
@@ -1581,7 +1581,6 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         Article: {article || '---'}
                       </span>
                     </div>
-                    <span className="text-[10px] text-gray-500 dark:text-slate-400">SKU generated automatically in background</span>
                   </div>
                 )}
               </div>
@@ -2241,10 +2240,6 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           <span className="font-bold text-emerald-900 dark:text-emerald-300 font-mono">
                             {article.trim().toUpperCase()}
                           </span>
-                          <span className="mx-1.5 opacity-40">|</span>
-                          <span className="text-emerald-700 dark:text-emerald-400">
-                            Linked SKU: <strong className="font-mono">{sku || '---'}</strong>
-                          </span>
                         </div>
                       </div>
                       <span className="badge-success uppercase text-[10px]">
@@ -2479,9 +2474,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#070B14] border border-gray-100 dark:border-slate-800">
-                    <span className="text-[10px] text-gray-400 dark:text-slate-500 block">Article / SKU</span>
+                    <span className="text-[10px] text-gray-400 dark:text-slate-500 block">Article</span>
                     <span className="font-mono font-bold text-indigo-600 dark:text-blue-400 truncate block">
-                      {article || '---'} <span className="text-gray-400 dark:text-slate-500 font-normal">({sku || '---'})</span>
+                      {article || '---'}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#070B14] border border-gray-100 dark:border-slate-800">

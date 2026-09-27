@@ -72,7 +72,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
   const [showStore, setShowStore] = useState(true);
   const [showBrand, setShowBrand] = useState(true);
   const [showArticle, setShowArticle] = useState(true);
-  const [showSku, setShowSku] = useState(true);
+  const [showSku, setShowSku] = useState(false);
   const [showPrice, setShowPrice] = useState(true);
   const [showBarcodeText, setShowBarcodeText] = useState(true);
 
@@ -316,7 +316,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
         setTestScanResult({
           status: 'unmatched',
           code: scanned,
-          message: `✗ Scanned code [${scanned}] does not match current SKU (${previewProduct.sku}) or Barcode (${previewProduct.barcode}).`,
+          message: `✗ Scanned code [${scanned}] does not match current Article (${previewProduct.article}) or Barcode (${previewProduct.barcode}).`,
         });
       }
       setTestScanInput('');
@@ -326,7 +326,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
   // Actions
   const handlePrintStandard = () => {
     if (totalStickersToPrint === 0) {
-      alert('Please select at least one SKU to print.');
+      alert('Please select at least one item to print.');
       return;
     }
     window.print();
@@ -334,7 +334,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
 
   const handleExportPdf = () => {
     if (totalStickersToPrint === 0) {
-      alert('Please select at least one SKU to print.');
+      alert('Please select at least one item to print.');
       return;
     }
     setIsExportingPdf(true);
@@ -344,7 +344,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
         showStore,
         showBrand,
         showArticle,
-        showSku,
+        showSku: false,
         showPrice,
       });
       setFeedbackNotice(`Downloaded ${totalStickersToPrint} sticker label(s) as PDF.`);
@@ -359,7 +359,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
     setFeedbackNotice(null);
     try {
       exportStickersToImage(previewProduct, companySettings);
-      setFeedbackNotice(`Sticker image saved for SKU ${previewProduct.sku}.`);
+      setFeedbackNotice(`Sticker image saved for ${previewProduct.article || 'product'}.`);
     } catch (err: any) {
       setFeedbackNotice(`Image export error: ${err.message || 'Unknown error'}`);
     }
@@ -367,7 +367,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
 
   const handlePrintDirect = async () => {
     if (totalStickersToPrint === 0) {
-      alert('Please select at least one SKU to print.');
+      alert('Please select at least one item to print.');
       return;
     }
     setIsPrintingDirect(true);
@@ -425,7 +425,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Generate high-density scannable barcodes for shoe SKUs &amp; print physical adhesive labels
+                Generate high-density scannable barcodes for shoe products &amp; print physical adhesive labels
               </p>
             </div>
           </div>
@@ -461,7 +461,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
               }`}
             >
               <Boxes className={`w-3.5 h-3.5 transition-colors duration-200 ${activeTab === 'catalog' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500'}`} />
-              <span>Catalog Inventory SKUs</span>
+              <span>Catalog Inventory</span>
               <span
                 className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold transition-colors duration-200 ${
                   activeTab === 'catalog'
@@ -493,7 +493,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
               }`}
             >
               <Sparkles className={`w-3.5 h-3.5 transition-colors duration-200 ${activeTab === 'custom' ? 'text-purple-600 dark:text-purple-400' : 'text-amber-500'}`} />
-              <span>Custom SKU Barcode Generator</span>
+              <span>Custom Barcode Generator</span>
               {activeTab === 'custom' && (
                 <motion.div
                   layoutId="barcodeActiveUnderline"
@@ -509,7 +509,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
 
           <div className="flex items-center space-x-3 text-xs text-slate-600 dark:text-slate-400 font-medium">
             <span>
-              Queue: <strong className="text-slate-900 dark:text-white">{labelQueue.length} SKU(s)</strong>
+              Queue: <strong className="text-slate-900 dark:text-white">{labelQueue.length} Item(s)</strong>
             </span>
             <span>•</span>
             <span>
@@ -547,7 +547,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                     <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
-                      placeholder="Search SKU, Article name, or Barcode..."
+                      placeholder="Search Article name or Barcode..."
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
                       className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-gray-300 rounded-lg text-xs outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 font-medium"
@@ -607,7 +607,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                         type="button"
                         onClick={() => handleApplyPresetCopiesToAll(num)}
                         className="px-2 py-0.5 bg-white hover:bg-indigo-50 text-indigo-600 border border-indigo-200 dark:bg-purple-500/20 dark:hover:bg-purple-500/30 dark:text-purple-200 dark:hover:text-white dark:border-purple-400/40 dark:shadow-[0_0_14px_rgba(147,51,234,0.2)] rounded font-bold text-xs transition cursor-pointer"
-                        title={`Set ${num} copies for all selected SKUs`}
+                        title={`Set ${num} copies for all selected items`}
                       >
                         {num}x
                       </button>
@@ -623,7 +623,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                   </div>
                 </div>
 
-                {/* Catalog SKU List */}
+                {/* Catalog Product List */}
                 <div className="border border-gray-200 rounded-xl overflow-hidden max-h-[380px] overflow-y-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead className="sticky top-0 bg-slate-100 dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 text-gray-700 dark:text-white font-semibold border-b border-gray-200 dark:border-purple-800/80 z-10">
@@ -642,7 +642,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                             className="rounded border-gray-300 text-indigo-600 focus:ring-0 cursor-pointer"
                           />
                         </th>
-                        <th className="py-2.5 px-3">Article &amp; SKU</th>
+                        <th className="py-2.5 px-3">Article</th>
                         <th className="py-2.5 px-3">Barcode (1D)</th>
                         <th className="py-2.5 px-3 text-right">Price</th>
                         <th className="py-2.5 px-3 text-center">Stock</th>
@@ -681,9 +681,6 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                               <td className="py-2 px-3">
                                 <div className="font-bold text-gray-900 truncate max-w-[170px]">
                                   {p.article || p.name}
-                                </div>
-                                <div className="text-[11px] font-mono text-gray-500">
-                                  SKU: <span className="font-semibold text-gray-800">{p.sku}</span>
                                 </div>
                               </td>
 
@@ -764,13 +761,13 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                 </div>
               </div>
             ) : (
-              /* TAB 2: CUSTOM SKU GENERATOR ON-THE-FLY */
+              /* TAB 2: CUSTOM BARCODE GENERATOR ON-THE-FLY */
               <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-gray-200">
                 <div className="flex items-center justify-between border-b border-gray-200 pb-3">
                   <div className="flex items-center space-x-2">
                     <Sparkles className="w-4 h-4 text-amber-600" />
                     <h3 className="font-bold text-gray-900 text-sm">
-                      Custom SKU Barcode Generation &amp; Encoding
+                      Custom Barcode Generation &amp; Encoding
                     </h3>
                   </div>
                   <span className="text-[11px] text-gray-500">
@@ -781,27 +778,19 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      SKU Code <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={customSku}
-                      onChange={(e) => setCustomSku(e.target.value)}
-                      placeholder="e.g. APX-RUN-00201"
-                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-mono font-bold outline-none focus:border-blue-500 uppercase"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Article / Shoe Model Name
+                      Article / Shoe Model Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={customArticle}
-                      onChange={(e) => setCustomArticle(e.target.value)}
+                      onChange={(e) => {
+                        setCustomArticle(e.target.value);
+                        if (!customSku || customSku.startsWith('SKU-CUSTOM')) {
+                          setCustomSku('CUST-' + e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 10).toUpperCase());
+                        }
+                      }}
                       placeholder="e.g. Air Flex Trainer 42"
-                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs outline-none focus:border-blue-500"
+                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs outline-none focus:border-blue-500 font-medium"
                     />
                   </div>
 
@@ -849,15 +838,6 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                         <RefreshCw className="w-3 h-3" />
                         <span>Auto EAN-13 (Prefix)</span>
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={handleUseSkuAsBarcode}
-                        className="flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded text-xs transition cursor-pointer"
-                      >
-                        <Barcode className="w-3 h-3" />
-                        <span>Use SKU As Barcode</span>
-                      </button>
                     </div>
                   </div>
 
@@ -866,7 +846,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                       type="text"
                       value={customBarcode}
                       onChange={(e) => setCustomBarcode(e.target.value)}
-                      placeholder="Enter 13-digit EAN or alphanumeric SKU barcode..."
+                      placeholder="Enter 13-digit EAN or alphanumeric barcode..."
                       className="flex-1 px-3 py-2 bg-slate-50 border border-gray-300 rounded-lg text-sm font-mono font-bold outline-none focus:bg-white focus:border-blue-500"
                     />
                     <select
@@ -1056,16 +1036,6 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                   <label className="flex items-center space-x-1.5 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={showSku}
-                      onChange={(e) => setShowSku(e.target.checked)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-0"
-                    />
-                    <span>SKU Code</span>
-                  </label>
-
-                  <label className="flex items-center space-x-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
                       checked={showPrice}
                       onChange={(e) => setShowPrice(e.target.checked)}
                       className="rounded border-gray-300 text-blue-600 focus:ring-0"
@@ -1117,11 +1087,6 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                       {showArticle && (
                         <p className="text-[11px] font-bold text-black truncate mt-0.5">
                           {previewProduct.article || previewProduct.name}
-                        </p>
-                      )}
-                      {showSku && (
-                        <p className="text-[10px] font-mono font-bold text-gray-700">
-                          SKU: {previewProduct.sku}
                         </p>
                       )}
                     </div>
@@ -1236,11 +1201,6 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                         {item.product.article || item.product.name}
                       </p>
                     )}
-                    {showSku && (
-                      <p className="text-[7pt] font-mono font-bold text-gray-800 leading-none mt-0.5">
-                        SKU: {item.product.sku}
-                      </p>
-                    )}
                   </div>
 
                   <div className="flex justify-center -my-1">
@@ -1288,11 +1248,6 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                     {showArticle && (
                       <p className="text-[9pt] font-bold text-black leading-tight truncate mt-0.5">
                         {item.product.article || item.product.name}
-                      </p>
-                    )}
-                    {showSku && (
-                      <p className="text-[7.5pt] font-mono font-bold text-gray-800 leading-none mt-0.5">
-                        SKU: {item.product.sku}
                       </p>
                     )}
                   </div>

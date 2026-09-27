@@ -134,7 +134,7 @@ export const StockLedgerView: React.FC = () => {
           <option value="" className="dark:bg-[#120726] dark:text-purple-100">All Products</option>
           {products.map((p) => (
             <option key={p.id} value={p.id} className="dark:bg-[#120726] dark:text-purple-100">
-              {p.article || p.name} ({p.sku})
+              {p.article || p.name} {p.barcode ? `(${p.barcode})` : ''}
             </option>
           ))}
         </select>
@@ -229,7 +229,6 @@ export const StockLedgerView: React.FC = () => {
 
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900 dark:text-white">{m.article || m.productName}</div>
-                        <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">SKU: {m.productSku}</div>
                       </td>
 
                       <td className="py-3.5 px-3">{getBadge(m.movementType)}</td>
