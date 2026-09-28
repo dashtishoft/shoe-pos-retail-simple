@@ -206,10 +206,8 @@ export function generateSaleEscPos(
 
   builder.divider('=');
 
-  // Barcode / Footer
+  // Footer
   builder.align('center');
-  builder.textLine(`* ${sale.invoice_number} *`);
-  builder.newLine();
   builder.textLine(footerNote);
   builder.textLine('*** PLEASE KEEP RECEIPT FOR EXCHANGES ***');
 

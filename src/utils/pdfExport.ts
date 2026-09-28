@@ -57,6 +57,14 @@ export function exportSaleToPdf(
     const taxNumber = companySettings?.tax_number || companySettings?.taxNumber || '';
     const footerNote = companySettings?.invoice_footer || companySettings?.invoiceFooter || 'Thank you for your visit!';
     const currency = companySettings?.currency_symbol || companySettings?.currencySymbol || 'Rs.';
+    const showReceiptLogo = Boolean(
+      companySettings?.show_receipt_logo ?? companySettings?.showReceiptLogo ?? false
+    );
+    const receiptLogo =
+      companySettings?.receipt_logo ||
+      companySettings?.receiptLogo ||
+      companySettings?.logo ||
+      '';
 
     const items = sale.items || [];
     const totalAmount = formatStockPrice(sale.total_amount || 0);
@@ -67,7 +75,7 @@ export function exportSaleToPdf(
 
     if (format === 'thermal') {
       // 80mm roll width. Dynamic height based on number of items
-      const estimatedHeight = Math.max(140, 100 + items.length * 9);
+      const estimatedHeight = Math.max(140, 105 + items.length * 9 + (showReceiptLogo && receiptLogo ? 16 : 0));
       const pdf = new jsPDF({
         orientation: 'p',
         unit: 'mm',
@@ -75,6 +83,14 @@ export function exportSaleToPdf(
       });
 
       let y = 10;
+      if (showReceiptLogo && typeof receiptLogo === 'string' && receiptLogo.startsWith('data:image/')) {
+        try {
+          pdf.addImage(receiptLogo, 'PNG', 32, y - 4, 16, 12);
+          y += 12;
+        } catch {
+          // ignore logo error in PDF
+        }
+      }
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(13);
       pdf.text(storeName, 40, y, { align: 'center' });
@@ -188,15 +204,8 @@ export function exportSaleToPdf(
       pdf.text('Change Given:', 5, y);
       pdf.text(`${currency} ${changeGiven}`, 75, y, { align: 'right' });
 
-      // Barcode
-      y += 5;
-      const barcodeData = generateBarcodeDataUrl(sale.invoice_number);
-      if (barcodeData) {
-        pdf.addImage(barcodeData, 'PNG', 12, y, 56, 16);
-        y += 18;
-      }
-
       // Footer
+      y += 6;
       pdf.setFontSize(7);
       pdf.text(footerNote, 40, y, { align: 'center' });
       y += 3;
@@ -308,13 +317,9 @@ export function exportSaleToPdf(
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
 
-      // Barcode at footer
-      y += 20;
-      const barcodeData = generateBarcodeDataUrl(sale.invoice_number);
-      if (barcodeData) {
-        pdf.addImage(barcodeData, 'PNG', 20, y, 60, 18);
-      }
-      pdf.text(footerNote, 20, y + 23);
+      // Footer
+      y += 16;
+      pdf.text(footerNote, 20, y);
 
       pdf.save(`Tax-Invoice-${sale.invoice_number}.pdf`);
       return true;
@@ -330,7 +335,6 @@ export interface StickerCustomOptions {
   showBrand?: boolean;
   showCategory?: boolean;
   showArticle?: boolean;
-  showSize?: boolean;
   showSku?: boolean;
   showPrice?: boolean;
   showBarcodeText?: boolean;
@@ -355,7 +359,6 @@ export function exportStickersToPdf(
     const brand = (product.brandName || product.brand_name || '').toUpperCase();
     const category = (product.categoryName || product.category_name || '').toUpperCase();
     const name = String(product.article || product.name || '').substring(0, 26);
-    const size = product.size ? String(product.size).trim() : '';
     const sku = String(product.sku || '').substring(0, 18);
     const barcode = String(product.barcode || sku);
     const price = formatStockPrice(getProductRetailPrice(product, companySettings));
@@ -364,7 +367,6 @@ export function exportStickersToPdf(
     const showBrand = options.showBrand !== false;
     const showCategory = options.showCategory !== false;
     const showArticle = options.showArticle !== false;
-    const showSize = options.showSize !== false;
     const showSku = options.showSku !== false;
     const showPrice = options.showPrice !== false;
     const labelSize = options.labelSize || '50x30';
@@ -414,10 +416,9 @@ export function exportStickersToPdf(
         currentY += labelSize === '40x25' ? 3 : 3.5;
       }
 
-      // SKU and/or Size
+      // SKU
       const subInfoParts = [];
       if (showSku) subInfoParts.push(`SKU: ${sku}`);
-      if (showSize && size) subInfoParts.push(`SIZE: ${size}`);
 
       if (subInfoParts.length > 0) {
         pdf.setFont('courier', 'bold');
@@ -833,7 +834,6 @@ export function exportStickersToImage(
     const showBrand = options.showBrand !== false;
     const showCategory = options.showCategory !== false;
     const showArticle = options.showArticle !== false;
-    const showSize = options.showSize !== false;
     const showSku = options.showSku !== false;
     const showPrice = options.showPrice !== false;
     const showBarcodeText = options.showBarcodeText !== false;
@@ -862,10 +862,9 @@ export function exportStickersToImage(
       currentY += 18;
     }
 
-    // SKU & Size
+    // SKU
     const subParts: string[] = [];
     if (showSku) subParts.push(`SKU: ${sku}`);
-    if (showSize && product.size) subParts.push(`SIZE: ${product.size}`);
     if (subParts.length > 0) {
       ctx.font = 'bold 11px monospace';
       ctx.fillText(subParts.join(' | '), width / 2, currentY);

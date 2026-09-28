@@ -39,7 +39,7 @@ CASCADE;
 INSERT INTO company_settings (
   id, name, logo, address, phone, email, website, strn, tax_id, tax_number,
   currency, currency_name, currency_symbol, invoice_prefix, purchase_prefix, barcode_prefix,
-  invoice_footer, low_stock_limit, min_profit_margin, max_profit_margin, is_installed, updated_at
+  invoice_footer, low_stock_limit, is_installed, updated_at
 ) VALUES (
   1,
   'Elite Footwear & Sports Co.',
@@ -59,8 +59,6 @@ INSERT INTO company_settings (
   '0108923',
   'Thank you for choosing Elite Footwear! Exchanges valid within 7 days with original receipt.',
   5,
-  12.00,
-  35.00,
   true,
   '2026-09-20 10:00:00'
 ) ON CONFLICT (id) DO UPDATE SET
@@ -725,22 +723,22 @@ INSERT INTO purchase_returns (id, return_number, purchase_id, supplier_id, suppl
 (15, 'PRET-20221018-015', 19, 12, 'Premier Ladies & Kids Footwear Wholesalers', '2022-10-18', 21000.00, 'Factory defect detected in batch PUR-20221015-019', 'Debit note adjusted against supplier ledger', 1, '2022-10-18 15:30:00');
 
 -- 12. Purchase Return Items
-INSERT INTO purchase_return_items (id, purchase_return_id, product_id, carton_quantity, pairs_per_carton, quantity, unit_purchase_price, subtotal, defect_type) VALUES
-(1, 1, 51, 1, 3, 3, 2500.00, 7500.00, 'CRUSHED_BOXES_TRANSIT'),
-(2, 2, 43, 1, 4, 4, 3400.00, 13600.00, 'WRONG_COLORWAY'),
-(3, 3, 26, 1, 5, 5, 3500.00, 17500.00, 'SOLE_BONDING_DEFECT'),
-(4, 4, 39, 1, 6, 6, 4600.00, 27600.00, 'BUCKLE_MISMATCH'),
-(5, 5, 84, 1, 6, 6, 2400.00, 14400.00, 'CRUSHED_BOXES_TRANSIT'),
-(6, 6, 115, 1, 6, 6, 2600.00, 15600.00, 'CRUSHED_BOXES_TRANSIT'),
-(7, 7, 83, 1, 3, 3, 3200.00, 9600.00, 'SOLE_BONDING_DEFECT'),
-(8, 8, 71, 1, 3, 3, 1700.00, 5100.00, 'CRUSHED_BOXES_TRANSIT'),
-(9, 9, 66, 1, 4, 4, 3600.00, 14400.00, 'STITCHING_FLAW'),
-(10, 10, 39, 1, 2, 2, 4600.00, 9200.00, 'CRUSHED_BOXES_TRANSIT'),
-(11, 11, 51, 1, 2, 2, 2500.00, 5000.00, 'WRONG_COLORWAY'),
-(12, 12, 106, 1, 6, 6, 4600.00, 27600.00, 'WRONG_COLORWAY'),
-(13, 13, 45, 1, 6, 6, 3100.00, 18600.00, 'WRONG_COLORWAY'),
-(14, 14, 42, 1, 4, 4, 2900.00, 11600.00, 'SOLE_BONDING_DEFECT'),
-(15, 15, 18, 1, 6, 6, 3500.00, 21000.00, 'WRONG_COLORWAY');
+INSERT INTO purchase_return_items (id, purchase_return_id, product_id, quantity, unit_purchase_price, subtotal, defect_type) VALUES
+(1, 1, 51, 3, 2500.00, 7500.00, 'CRUSHED_BOXES_TRANSIT'),
+(2, 2, 43, 4, 3400.00, 13600.00, 'WRONG_COLORWAY'),
+(3, 3, 26, 5, 3500.00, 17500.00, 'SOLE_BONDING_DEFECT'),
+(4, 4, 39, 6, 4600.00, 27600.00, 'BUCKLE_MISMATCH'),
+(5, 5, 84, 6, 2400.00, 14400.00, 'CRUSHED_BOXES_TRANSIT'),
+(6, 6, 115, 6, 2600.00, 15600.00, 'CRUSHED_BOXES_TRANSIT'),
+(7, 7, 83, 3, 3200.00, 9600.00, 'SOLE_BONDING_DEFECT'),
+(8, 8, 71, 3, 1700.00, 5100.00, 'CRUSHED_BOXES_TRANSIT'),
+(9, 9, 66, 4, 3600.00, 14400.00, 'STITCHING_FLAW'),
+(10, 10, 39, 2, 4600.00, 9200.00, 'CRUSHED_BOXES_TRANSIT'),
+(11, 11, 51, 2, 2500.00, 5000.00, 'WRONG_COLORWAY'),
+(12, 12, 106, 6, 4600.00, 27600.00, 'WRONG_COLORWAY'),
+(13, 13, 45, 6, 3100.00, 18600.00, 'WRONG_COLORWAY'),
+(14, 14, 42, 4, 2900.00, 11600.00, 'SOLE_BONDING_DEFECT'),
+(15, 15, 18, 6, 3500.00, 21000.00, 'WRONG_COLORWAY');
 
 -- 13. Sales (1,250 Invoices spanning 5 Full Years)
 INSERT INTO sales (

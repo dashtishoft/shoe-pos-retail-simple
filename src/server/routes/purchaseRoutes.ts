@@ -3,7 +3,6 @@ import type { Response } from 'express';
 import { pgClient } from '../../db/index.ts';
 import { requireAuth, requireAdmin, forbidCashier } from '../auth.ts';
 import type { AuthenticatedRequest } from '../auth.ts';
-import { calculateAutomaticPricing } from '../../utils/pricing.ts';
 
 const router = Router();
 
@@ -181,12 +180,6 @@ router.post('/', requireAuth, forbidCashier, requireAdmin, async (req: Authentic
     const purchaseNumber = await generatePurchaseNumber();
     let totalAmount = 0;
 
-    const setRes = await pgClient.query<{ min_profit_margin: string; max_profit_margin: string }>(
-      'SELECT min_profit_margin, max_profit_margin FROM company_settings LIMIT 1'
-    );
-    const minMargin = parseFloat(setRes.rows[0]?.min_profit_margin ?? '10') || 10;
-    const maxMargin = parseFloat(setRes.rows[0]?.max_profit_margin ?? '30') || 30;
-
     const validatedItems: Array<{
       productId: number;
       productName: string;
@@ -222,8 +215,15 @@ router.post('/', requireAuth, forbidCashier, requireAdmin, async (req: Authentic
         throw new Error(`Invalid unit price in purchase item.`);
       }
 
-      const pRes = await pgClient.query<{ id: number; name: string; article: string; total_stock: number }>(
-        'SELECT id, name, article, total_stock FROM products WHERE id = $1 FOR UPDATE',
+      const pRes = await pgClient.query<{
+        id: number;
+        article: string;
+        total_stock: number;
+        selling_price: number;
+        min_price: number;
+        max_price: number;
+      }>(
+        'SELECT id, article, total_stock, selling_price, min_price, max_price FROM products WHERE id = $1 FOR UPDATE',
         [productId]
       );
 
@@ -237,15 +237,19 @@ router.post('/', requireAuth, forbidCashier, requireAdmin, async (req: Authentic
       const subtotal = Math.round(qty * unitPrice * 100) / 100;
       totalAmount = Math.round((totalAmount + subtotal) * 100) / 100;
 
-      // Update product stock and procurement cost price (Selling prices are auto-calculated dynamically in real time)
+      // Update product stock and procurement cost price (preserving selling_price/min_price/max_price >= cost_price)
+      const nextMinPrice = Math.max(Math.round(unitPrice), Number(prod.min_price) || 0);
+      const nextMaxPrice = Math.max(nextMinPrice, Number(prod.max_price) || 0);
+      const nextSellingPrice = Math.max(Math.round(unitPrice), Number(prod.selling_price) || nextMaxPrice);
+
       await pgClient.query(
-        'UPDATE products SET total_stock = $1, cost_price = $2, updated_at = NOW() WHERE id = $3',
-        [newStock, unitPrice, prod.id]
+        'UPDATE products SET total_stock = $1, cost_price = $2, selling_price = $3, min_price = $4, max_price = $5, updated_at = NOW() WHERE id = $6',
+        [newStock, unitPrice, nextSellingPrice, nextMinPrice, nextMaxPrice, prod.id]
       );
 
       validatedItems.push({
         productId: prod.id,
-        productName: prod.article || prod.name,
+        productName: prod.article,
         quantity: qty,
         unitPurchasePrice: unitPrice,
         subtotal,

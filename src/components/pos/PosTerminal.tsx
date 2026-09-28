@@ -22,21 +22,19 @@ import {
   CheckCircle2,
   Lock,
   ImageIcon,
-  Boxes,
 } from 'lucide-react';
 import { api } from '../../services/api.ts';
 import { playAudioFeedback } from '../../utils/audio.ts';
 import { InvoicePrintModal } from './InvoicePrintModal.tsx';
 import { ShoeExchangeModal } from './ShoeExchangeModal.tsx';
 import { formatStockPrice, cleanStockPriceInput, getProductRetailPrice, getProductMinFloorPrice } from '../../utils/priceFormat.ts';
-import type { ActiveExchange, CartonPack, PosAddToCartPayload } from '../../types.ts';
+import type { ActiveExchange } from '../../types.ts';
 import { offlineQueueService } from '../../services/offlineQueueService.ts';
 import { lookupCachedProductOffline, searchCachedProductsOffline } from '../../utils/offlineDb.ts';
 import { useOfflineSync } from '../../utils/useOfflineSync.ts';
 import { OfflineSyncModal } from './OfflineSyncModal.tsx';
 import { BrandLogo } from '../common/BrandLogo.tsx';
 import { CustomerPicker } from './CustomerPicker.tsx';
-import { PosItemSelection } from './PosItemSelection.tsx';
 
 interface CartItem {
   productId: number;
@@ -59,11 +57,6 @@ interface CartItem {
   subtotal: number;
   isPriceOverridden?: boolean;
   originalPrice?: number;
-  // Carton pack attributes when added via carton pack item selection
-  cartonPackId?: number;
-  cartons?: number;
-  pairsPerCarton?: number;
-  packName?: string;
 }
 
 interface PosTerminalProps {
@@ -141,10 +134,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   // Floor protection notice for clamped prices in cart
   const [cartFloorNotice, setCartFloorNotice] = useState<{ productId: number; message: string } | null>(null);
 
-  // Carton Pack Selection Module State
-  const [selectedProductForCartonPack, setSelectedProductForCartonPack] = useState<any | null>(null);
-  const [cartonPacksList, setCartonPacksList] = useState<CartonPack[]>([]);
-
   // Price pop animation trigger state for visual feedback when items are added or quantities adjusted
   const [pricePopTrigger, setPricePopTrigger] = useState(0);
   const prevCartSummaryRef = useRef<string | null>(null);
@@ -185,24 +174,23 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   const autoLookupTimerRef = useRef<any>(null);
 
   const currencySymbol = companySettings?.currency_symbol || companySettings?.currencySymbol || 'Rs.';
-  const rawPricingMode = String(companySettings?.pricing_mode || companySettings?.pricingMode || 'NEGOTIABLE').toUpperCase();
+  const rawPricingMode = String(
+    companySettings?.pricingPolicy ||
+    companySettings?.pricing_policy ||
+    companySettings?.pricing_mode ||
+    companySettings?.pricingMode ||
+    'FIXED'
+  ).toUpperCase();
   const isFixedPolicy = rawPricingMode === 'FIXED';
-  const fixedProfitMarginSetting =
-    typeof companySettings?.fixed_profit_margin === 'number'
-      ? companySettings.fixed_profit_margin
-      : typeof companySettings?.fixedProfitMargin === 'number'
-      ? companySettings.fixedProfitMargin
-      : parseFloat(companySettings?.fixed_profit_margin || companySettings?.fixedProfitMargin || '30') || 30;
 
   // Offline Persistence & Background Synchronization Hook
   const { isOnline, pendingCount } = useOfflineSync();
   const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
   const [offlineNotice, setOfflineNotice] = useState<string | null>(null);
 
-  // Load Customers & Carton Packs
+  // Load Customers
   useEffect(() => {
     loadCustomers();
-    loadCartonPacks();
     // Auto-focus scanner on mount
     focusScannerInput();
 
@@ -212,17 +200,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
     window.addEventListener('focus', handleWindowFocus);
     return () => window.removeEventListener('focus', handleWindowFocus);
   }, []);
-
-  const loadCartonPacks = async () => {
-    try {
-      const res = await api.pos.getCartonPacks().catch(() => null);
-      if (res?.cartonPacks && Array.isArray(res.cartonPacks)) {
-        setCartonPacksList(res.cartonPacks);
-      }
-    } catch (err) {
-      console.warn('Failed to load carton packs:', err);
-    }
-  };
 
   // Sync initial exchange from parent / Returns view
   useEffect(() => {
@@ -607,44 +584,20 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         : 0
     )));
 
-    const itemPolicy: 'FIXED' | 'NEGOTIABLE' = String(
-      product.marginType ||
-      product.margin_type ||
-      (product.salePrice !== undefined && product.salePrice !== null ? 'FIXED' : (companySettings?.pricing_mode || 'FIXED'))
-    ).toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
-
+    const itemPolicy: 'FIXED' | 'NEGOTIABLE' = isFixedPolicy ? 'FIXED' : 'NEGOTIABLE';
     const isItemFixed = itemPolicy === 'FIXED';
 
-    let itemSalePrice: number = 0;
-    let itemMinSalePrice: number = 0;
-    let itemMaxSalePrice: number = 0;
+    const retailPrice = getProductRetailPrice(product, companySettings);
+    const minFloor = getProductMinFloorPrice(product, companySettings);
 
-    if (isItemFixed) {
-      const rawSale = product.salePrice !== undefined && product.salePrice !== null ? product.salePrice : product.sale_price;
-      itemSalePrice = rawSale !== undefined && rawSale !== null && rawSale !== ''
-        ? Math.round(Number(rawSale))
-        : (cost > 0 ? Math.round(cost * (1 + (companySettings?.fixed_profit_margin || companySettings?.fixedProfitMargin || 30) / 100)) : 0);
-      itemMinSalePrice = itemSalePrice;
-      itemMaxSalePrice = itemSalePrice;
-    } else {
-      const rawMin = product.minSalePrice !== undefined && product.minSalePrice !== null ? product.minSalePrice : product.min_sale_price;
-      const rawMax = product.maxSalePrice !== undefined && product.maxSalePrice !== null ? product.maxSalePrice : product.max_sale_price;
-
-      itemMinSalePrice = rawMin !== undefined && rawMin !== null && rawMin !== ''
-        ? Math.round(Number(rawMin))
-        : (cost > 0 ? Math.round(cost * (1 + (companySettings?.min_profit_margin || companySettings?.minProfitMargin || 15) / 100)) : 0);
-
-      itemMaxSalePrice = rawMax !== undefined && rawMax !== null && rawMax !== ''
-        ? Math.max(itemMinSalePrice, Math.round(Number(rawMax)))
-        : (cost > 0 ? Math.max(itemMinSalePrice, Math.round(cost * (1 + (companySettings?.max_profit_margin || companySettings?.maxProfitMargin || 30) / 100))) : itemMinSalePrice);
-
-      itemSalePrice = itemMaxSalePrice;
-    }
+    const itemSalePrice = retailPrice;
+    const itemMinSalePrice = isItemFixed ? retailPrice : minFloor;
+    const itemMaxSalePrice = retailPrice;
 
     // Initial unit price in cart:
-    // Fixed: saved sale_price
-    // Negotiable: saved max_sale_price (the sticker M.R.P.)
-    const startingUnitPrice = isItemFixed ? itemSalePrice : itemMaxSalePrice;
+    // Fixed: saved sellingPrice
+    // Negotiable: saved maxPrice (the sticker M.R.P.)
+    const startingUnitPrice = itemSalePrice;
 
     setCart((prevCart) => {
       const existingIdx = prevCart.findIndex((item) => item.productId === product.id);
@@ -676,8 +629,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           return prevCart;
         }
 
-        const itemSize = product.size || (product.sku ? product.sku.split('-').pop() : '42') || '42';
-
         const item: CartItem = {
           productId: product.id,
           article: prodIdentifier,
@@ -685,7 +636,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
           brandName: product.brandName || product.brand_name || '',
           brandLogo: product.brandLogo || product.brand_logo || '',
           sku: product.sku,
-          size: itemSize,
           barcode: product.barcode,
           totalStock: product.totalStock,
           costPrice: cost,
@@ -706,113 +656,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
 
     setErrorMessage(null);
     // Automatically regain focus on search input after adding product, enabling continuous scanning
-    focusScannerInput(continuousScan);
-  };
-
-  /**
-   * Handle item addition from the POS item selection module with dynamic carton pack multiplier calculation.
-   * Expected Component Payload: { productId, cartonPackId, cartons, totalPairs, totalPrice }
-   */
-  const handleAddCartonPackToCart = (payload: PosAddToCartPayload) => {
-    const product = payload.product || selectedProductForCartonPack;
-    if (!product) return;
-
-    const prodIdentifier = product.article || product.name || 'Shoe';
-    const cost = Math.max(0, Math.round(Number(
-      product.costPrice !== undefined && product.costPrice !== null
-        ? product.costPrice
-        : product.cost_price !== undefined && product.cost_price !== null
-        ? product.cost_price
-        : 0
-    )));
-
-    const itemPolicy: 'FIXED' | 'NEGOTIABLE' = String(
-      product.marginType ||
-      product.margin_type ||
-      (product.salePrice !== undefined && product.salePrice !== null ? 'FIXED' : (companySettings?.pricing_mode || 'FIXED'))
-    ).toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
-
-    const isItemFixed = itemPolicy === 'FIXED';
-
-    // Resolved unit selling price per pair
-    const calcUnitPrice = payload.unitPrice || Math.round(payload.totalPrice / (payload.totalPairs || 1));
-    const addedQuantity = Math.max(1, Math.round(payload.totalPairs));
-
-    setCart((prevCart) => {
-      const existingIdx = prevCart.findIndex((item) => item.productId === payload.productId);
-
-      if (existingIdx >= 0) {
-        const existing = prevCart[existingIdx];
-        const newQty = existing.quantity + addedQuantity;
-        if (newQty > product.totalStock) {
-          playAudioFeedback.warning();
-          setErrorMessage(`Cannot add more. Stock limit for "${prodIdentifier}" is ${product.totalStock}.`);
-          return prevCart;
-        }
-
-        const updated = [...prevCart];
-        const subtotal = newQty * existing.unitPrice - existing.discount;
-        updated[existingIdx] = {
-          ...existing,
-          quantity: newQty,
-          subtotal: Math.max(0, subtotal),
-          cartonPackId: payload.cartonPackId,
-          cartons: (existing.cartons || 0) + payload.cartons,
-          pairsPerCarton: payload.pairsPerCarton,
-          packName: payload.packName,
-        };
-        return updated;
-      } else {
-        if (product.totalStock < addedQuantity) {
-          playAudioFeedback.warning();
-          setErrorMessage(`Stock shortage: Only ${product.totalStock} pairs in stock, requested ${addedQuantity} pairs.`);
-          return prevCart;
-        }
-
-        const itemSize = product.size || (product.sku ? product.sku.split('-').pop() : '42') || '42';
-
-        const item: CartItem = {
-          productId: payload.productId,
-          article: prodIdentifier,
-          name: prodIdentifier,
-          brandName: product.brandName || product.brand_name || '',
-          brandLogo: product.brandLogo || product.brand_logo || '',
-          sku: product.sku,
-          size: itemSize,
-          barcode: product.barcode,
-          totalStock: product.totalStock,
-          costPrice: cost,
-          pricingPolicy: itemPolicy,
-          salePrice: calcUnitPrice,
-          minSalePrice: calcUnitPrice,
-          maxSalePrice: calcUnitPrice,
-          unitPrice: calcUnitPrice,
-          quantity: addedQuantity,
-          discount: 0,
-          subtotal: payload.totalPrice || (addedQuantity * calcUnitPrice),
-          isPriceOverridden: false,
-          originalPrice: calcUnitPrice,
-          cartonPackId: payload.cartonPackId,
-          cartons: payload.cartons,
-          pairsPerCarton: payload.pairsPerCarton,
-          packName: payload.packName,
-        };
-        return [item, ...prevCart];
-      }
-    });
-
-    playAudioFeedback.barcodeScan();
-    playAudioFeedback.invoiceItemAdded();
-    setLastScannedFeedback({
-      message: `Added ${payload.cartons} ctn (${payload.totalPairs} pairs)`,
-      article: prodIdentifier,
-      sku: product.sku,
-    });
-    setTimeout(() => setLastScannedFeedback(null), 3200);
-
-    setSelectedProductForCartonPack(null);
-    setBarcodeInput('');
-    setSearchResults([]);
     focusScannerInput(continuousScan);
   };
 
@@ -1154,8 +997,8 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
   };
 
   return (
-    <div className="flex flex-col min-h-0 bg-[#F8FAFC] dark:bg-[#0B0F17] gap-4 p-4 no-print transition-colors">
-      <div className="flex flex-col xl:flex-row min-h-0 gap-4 flex-1">
+    <div className="flex flex-col min-h-0 bg-[#F8FAFC] dark:bg-[#0B0F17] gap-4 p-4 print:p-0 print:bg-white transition-colors">
+      <div className="flex flex-col xl:flex-row min-h-0 gap-4 flex-1 no-print">
         {/* LEFT COLUMN: Physical Scanner & Cart Table */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -1429,26 +1272,12 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                          Article: {prod.article || prod.name} | Size: {prod.size || '42'} | Barcode: {prod.barcode}
+                          Article: {prod.article || prod.name} | Barcode: {prod.barcode}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedProductForCartonPack(prod);
-                          setSearchResults([]);
-                        }}
-                        className="px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-bold border border-purple-300 dark:border-purple-700 flex items-center gap-1.5 transition cursor-pointer"
-                        title="Select Carton Pack and Dynamic Quantity Multipliers"
-                      >
-                        <Boxes className="w-3.5 h-3.5" />
-                        <span>Carton Pack</span>
-                      </button>
-
                       <div className="text-right">
                         <p className="font-bold text-sm text-slate-900 dark:text-white">
                           {currencySymbol} {formatStockPrice(getProductRetailPrice(prod))}
@@ -1698,15 +1527,9 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
                           }`}>
                             {isItemFixed ? 'Fixed' : 'Negotiable'}
                           </span>
-                          {item.cartons !== undefined && item.cartons > 0 && (
-                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold font-mono bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 flex items-center gap-1">
-                              <Boxes className="w-2.5 h-2.5" />
-                              <span>{item.cartons} ctn ({item.packName || `${item.pairsPerCarton || 12} prs/ctn`})</span>
-                            </span>
-                          )}
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                          Article: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.article || item.name}</strong> | Size: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.size || '42'}</strong> | Barcode: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.barcode}</strong>
+                          Article: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.article || item.name}</strong> | Barcode: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{item.barcode}</strong>
                         </div>
 
                         {/* Visual Warning: Price below configured minimum profit margin */}
@@ -2389,21 +2212,6 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({
         }}
         currencySymbol={currencySymbol}
       />
-
-      {/* POS ITEM SELECTION MODULE (DYNAMIC CARTON PACK MULTIPLIER CHIPS) */}
-      {selectedProductForCartonPack && (
-        <PosItemSelection
-          isOpen={Boolean(selectedProductForCartonPack)}
-          product={selectedProductForCartonPack}
-          cartonPacks={cartonPacksList}
-          currencySymbol={currencySymbol}
-          onClose={() => {
-            setSelectedProductForCartonPack(null);
-            focusScannerInput();
-          }}
-          onAddToCart={handleAddCartonPackToCart}
-        />
-      )}
     </div>
   );
 };

@@ -30,10 +30,6 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
     (sum: number, item: any) => sum + (parseInt(item.quantity, 10) || 0),
     0
   );
-  const totalCartons = (returnRecord.items || []).reduce(
-    (sum: number, item: any) => sum + (parseInt(item.carton_quantity, 10) || 1),
-    0
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
@@ -54,7 +50,7 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Defective Shoe Cartons Return Voucher & Supplier Account Debit
+                Defective Footwear Return Voucher &amp; Supplier Account Debit
               </p>
             </div>
           </div>
@@ -129,7 +125,7 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
                 <span>Defective Units</span>
               </span>
               <p className="font-bold text-slate-900 dark:text-white mt-1">
-                {totalCartons} Cartons ({totalPairs} Pairs)
+                {totalPairs} Pairs
               </p>
             </div>
 
@@ -150,7 +146,7 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               <span>Primary Reason for Supplier Return:</span>
             </span>
-            <p className="text-amber-800 dark:text-amber-200 mt-1 font-medium">{returnRecord.reason || 'Defective carton batch'}</p>
+            <p className="text-amber-800 dark:text-amber-200 mt-1 font-medium">{returnRecord.reason || 'Defective footwear batch'}</p>
             {returnRecord.notes && (
               <p className="text-slate-600 dark:text-slate-400 text-[11px] mt-1.5 italic">
                 Notes: {returnRecord.notes}
@@ -169,8 +165,7 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
                 <thead className="bg-slate-100 dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 text-slate-700 dark:text-white font-bold border-b border-slate-200 dark:border-purple-800/80">
                   <tr>
                     <th className="p-2.5">Shoe Article / Item</th>
-                    <th className="p-2.5 text-center">Cartons</th>
-                    <th className="p-2.5 text-center">Total Pairs</th>
+                    <th className="p-2.5 text-center">Returned Pairs</th>
                     <th className="p-2.5">Defect Classification</th>
                     <th className="p-2.5 text-right">Unit Cost</th>
                     <th className="p-2.5 text-right">Debit Subtotal</th>
@@ -178,11 +173,10 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-[#1A263D] bg-white dark:bg-[#0E1628]">
                   {(returnRecord.items || []).map((item: any, idx: number) => {
-                    const cartonQty = item.carton_quantity || item.cartonQuantity || 1;
                     const pairs = item.quantity || 0;
                     const unitPrice = parseFloat(item.unit_purchase_price || item.unitPurchasePrice || 0);
                     const subtotal = parseFloat(item.subtotal || 0);
-                    const defect = item.defect_type || item.defectType || 'Defective Carton';
+                    const defect = item.defect_type || item.defectType || 'Manufacturing Defect';
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-[#131D33]/60 transition">
@@ -193,9 +187,6 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
                               Barcode: {item.barcode}
                             </p>
                           )}
-                        </td>
-                        <td className="p-2.5 text-center font-bold text-slate-700 dark:text-slate-300">
-                          {cartonQty} ctn
                         </td>
                         <td className="p-2.5 text-center font-bold text-slate-900 dark:text-white">
                           {pairs} prs
@@ -217,7 +208,7 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
                 </tbody>
                 <tfoot className="bg-slate-50 dark:bg-gradient-to-r dark:from-purple-900/90 dark:via-indigo-950/85 dark:to-slate-900 font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-purple-800/80">
                   <tr>
-                    <td colSpan={2} className="p-2.5 text-right text-xs uppercase text-slate-600 dark:text-slate-400">
+                    <td className="p-2.5 text-right text-xs uppercase text-slate-600 dark:text-slate-400">
                       Total Units:
                     </td>
                     <td className="p-2.5 text-center text-xs font-black text-slate-900 dark:text-white">
@@ -255,7 +246,7 @@ export const PurchaseReturnDetailsModal: React.FC<PurchaseReturnDetailsModalProp
             </div>
             <div className="text-center pt-8 border-t border-slate-300 dark:border-purple-800/80">
               <p className="font-bold text-slate-800 dark:text-slate-200">Supplier / Vendor Representative</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">Defective Carton Pickup Acknowledgment</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Defective Return Pickup Acknowledgment</p>
             </div>
           </div>
         </div>

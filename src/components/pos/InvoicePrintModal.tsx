@@ -18,7 +18,6 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { BarcodeSvg } from '../common/BarcodeSvg.tsx';
 import { formatStockPrice } from '../../utils/priceFormat.ts';
 import {
   executePrintReceipt,
@@ -68,6 +67,14 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   const storeEmail = companySettings?.email || '';
   const taxNumber = companySettings?.tax_number || companySettings?.taxNumber || '';
   const invoiceFooter = companySettings?.invoice_footer || companySettings?.invoiceFooter || 'Thank you for your visit!';
+  const showReceiptLogo = Boolean(
+    companySettings?.show_receipt_logo ?? companySettings?.showReceiptLogo ?? false
+  );
+  const receiptLogo =
+    companySettings?.receipt_logo ||
+    companySettings?.receiptLogo ||
+    companySettings?.logo ||
+    '';
 
   const items = sale.items || [];
   const totalAmount = parseFloat(sale.total_amount || 0);
@@ -237,7 +244,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
   }, [printerSettings, sale, companySettings, recipientPhone, whatsAppUrl, smsUrl]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto print:static print:bg-white print:p-0 print:overflow-visible print:block">
       {/* Screen Container */}
       <div className="relative w-full max-w-3xl app-modal-container overflow-hidden flex flex-col max-h-[92vh] no-print">
         {/* Modal Header */}
@@ -554,12 +561,21 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
         )}
 
         {/* Interactive Preview Container */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-100 dark:bg-[#080D1A] flex justify-center">
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-100 dark:bg-[#080D1A] flex justify-center items-start">
           {printFormat === 'thermal' ? (
             /* THERMAL RECEIPT PREVIEW (80mm) */
-            <div className="w-[320px] bg-white p-5 shadow-md border border-gray-200 font-mono text-xs text-gray-800 leading-tight">
+            <div className="invoice-preview-receipt w-[320px] h-fit shrink-0 bg-white p-5 shadow-md border border-gray-200 font-mono text-xs text-gray-800 leading-tight">
               <div className="text-center pb-3 border-b border-dashed border-gray-400">
-                <h3 className="font-bold text-base uppercase tracking-wider text-black">{storeName}</h3>
+                {showReceiptLogo && receiptLogo && (
+                  <div className="flex justify-center mb-2">
+                    <img
+                      src={receiptLogo}
+                      alt={storeName}
+                      className="max-h-12 max-w-[120px] object-contain mx-auto"
+                    />
+                  </div>
+                )}
+                <h3 className="invoice-store-name font-bold text-base uppercase tracking-wider text-black dark:text-white">{storeName}</h3>
                 {storeAddress && <p className="text-[11px] text-gray-600 mt-1">{storeAddress}</p>}
                 {storePhone && <p className="text-[11px] text-gray-600">Tel: {storePhone}</p>}
                 {taxNumber && <p className="text-[11px] text-gray-600">Tax Reg: {taxNumber}</p>}
@@ -600,8 +616,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                 {items.map((item: any, idx: number) => (
                   <div key={idx} className="grid grid-cols-12 py-1 text-[11px]">
                     <div className="col-span-6">
-                      <p className="font-semibold text-black truncate">{item.article || item.product_name || item.name}</p>
-                      <p className="text-[10px] text-gray-500">
+                      <p className="invoice-item-article font-semibold text-black dark:text-white truncate">{item.article || item.product_name || item.name}</p>
+                      <p className="invoice-item-price text-[10px] text-gray-500 dark:text-white">
                         {currencySymbol} {formatStockPrice(item.unit_price)}
                       </p>
                     </div>
@@ -625,7 +641,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                     <span>-{currencySymbol} {formatStockPrice(discount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-bold text-sm text-black pt-1 border-t border-gray-300">
+                <div className="invoice-total-payable flex justify-between font-bold text-sm text-black dark:text-white pt-1 border-t border-gray-300">
                   <span>TOTAL PAYABLE:</span>
                   <span>{currencySymbol} {formatStockPrice(totalAmount)}</span>
                 </div>
@@ -639,25 +655,31 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                 </div>
               </div>
 
-              {/* Barcode & Footer */}
-              <div className="pt-3 text-center space-y-2">
-                <div className="flex justify-center">
-                  <BarcodeSvg value={sale.invoice_number} width={1.4} height={35} fontSize={10} />
-                </div>
+              {/* Footer */}
+              <div className="pt-3 text-center space-y-1.5">
                 <p className="text-[10px] text-gray-600 italic px-2">{invoiceFooter}</p>
                 <p className="text-[9px] text-gray-400">*** KEEP THIS RECEIPT FOR RETURNS ***</p>
               </div>
             </div>
           ) : (
             /* A4 INVOICE PREVIEW */
-            <div className="w-full max-w-[650px] bg-white p-8 shadow-md border border-gray-200 text-gray-800 text-xs">
+            <div className="invoice-preview-receipt w-full max-w-[650px] h-fit shrink-0 bg-white p-8 shadow-md border border-gray-200 text-gray-800 text-xs">
               {/* Header */}
               <div className="flex justify-between items-start pb-6 border-b border-gray-300">
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900 tracking-tight">{storeName}</h1>
-                  <p className="text-gray-600 mt-1">{storeAddress}</p>
-                  <p className="text-gray-600">Phone: {storePhone} | Email: {storeEmail}</p>
-                  {taxNumber && <p className="text-gray-600 font-medium">STRN / Tax ID: {taxNumber}</p>}
+                <div className="flex items-start gap-3">
+                  {showReceiptLogo && receiptLogo && (
+                    <img
+                      src={receiptLogo}
+                      alt={storeName}
+                      className="max-h-14 max-w-[100px] object-contain shrink-0"
+                    />
+                  )}
+                  <div>
+                    <h1 className="invoice-store-name text-xl font-bold text-gray-900 dark:text-white tracking-tight">{storeName}</h1>
+                    <p className="text-gray-600 mt-1">{storeAddress}</p>
+                    <p className="text-gray-600">Phone: {storePhone} | Email: {storeEmail}</p>
+                    {taxNumber && <p className="text-gray-600 font-medium">STRN / Tax ID: {taxNumber}</p>}
+                  </div>
                 </div>
                 <div className="text-right">
                   <span className="inline-block px-3 py-1 bg-slate-100 text-slate-800 font-bold text-sm tracking-wider uppercase rounded-sm border border-slate-300">
@@ -699,15 +721,15 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                   {items.map((item: any, idx: number) => (
                     <tr key={idx}>
                       <td className="py-2.5 px-3 text-gray-500">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-medium text-gray-900">{item.article || item.product_name || item.name}</td>
+                      <td className="invoice-item-article py-2.5 px-3 font-medium text-gray-900 dark:text-white">{item.article || item.product_name || item.name}</td>
                       <td className="py-2.5 px-3 text-center text-gray-800">{item.quantity}</td>
-                      <td className="py-2.5 px-3 text-right text-gray-700">
+                      <td className="invoice-item-price py-2.5 px-3 text-right text-gray-700 dark:text-white">
                         {currencySymbol} {formatStockPrice(item.unit_price)}
                       </td>
                       <td className="py-2.5 px-3 text-right text-gray-500">
                         {parseFloat(item.discount || 0) > 0 ? `${currencySymbol} ${formatStockPrice(item.discount)}` : '-'}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-semibold text-gray-900">
+                      <td className="invoice-item-price py-2.5 px-3 text-right font-semibold text-gray-900 dark:text-white">
                         {currencySymbol} {formatStockPrice(item.subtotal)}
                       </td>
                     </tr>
@@ -728,7 +750,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
                       <span>-{currencySymbol} {formatStockPrice(discount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between font-bold text-sm text-gray-900 border-t border-gray-300 pt-1.5">
+                  <div className="invoice-total-payable flex justify-between font-bold text-sm text-gray-900 dark:text-white border-t border-gray-300 pt-1.5">
                     <span>NET PAYABLE:</span>
                     <span>{currencySymbol} {formatStockPrice(totalAmount)}</span>
                   </div>
@@ -746,8 +768,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               {/* Footer */}
               <div className="mt-8 pt-6 border-t border-gray-200 flex justify-between items-end">
                 <div>
-                  <BarcodeSvg value={sale.invoice_number} width={1.4} height={35} fontSize={10} />
-                  <p className="text-[10px] text-gray-500 mt-2 max-w-sm">{invoiceFooter}</p>
+                  <p className="text-[10px] text-gray-500 max-w-sm">{invoiceFooter}</p>
                 </div>
                 <div className="text-center">
                   <div className="w-36 border-b border-gray-400 pb-1 mb-1"></div>
@@ -759,45 +780,73 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
         </div>
       </div>
 
-      {/* PRINT-ONLY CONTAINER (This gets output by the physical printer) */}
+      {/* PRINT-ONLY CONTAINER (This gets output by the physical printer - strictly aligned with Light Mode) */}
       <div className="print-only">
         {printFormat === 'thermal' ? (
-          <div className="print-thermal-receipt">
-            <div style={{ textAlign: 'center', paddingBottom: '4px', borderBottom: '1px dashed #000' }}>
-              <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{storeName}</div>
-              {storeAddress && <div style={{ fontSize: '10px' }}>{storeAddress}</div>}
-              {storePhone && <div style={{ fontSize: '10px' }}>Tel: {storePhone}</div>}
-              {taxNumber && <div style={{ fontSize: '10px' }}>Tax Reg: {taxNumber}</div>}
+          <div className="print-thermal-receipt" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+            <div style={{ textAlign: 'center', paddingBottom: '8px', borderBottom: '1px dashed #666' }}>
+              {showReceiptLogo && receiptLogo && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+                  <img
+                    src={receiptLogo}
+                    alt={storeName}
+                    style={{ maxHeight: '44px', maxWidth: '110px', objectFit: 'contain' }}
+                  />
+                </div>
+              )}
+              <div style={{ fontWeight: 'bold', fontSize: '15px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#000000' }}>
+                {storeName}
+              </div>
+              {storeAddress && <div style={{ fontSize: '11px', color: '#333333', marginTop: '2px' }}>{storeAddress}</div>}
+              {storePhone && <div style={{ fontSize: '11px', color: '#333333' }}>Tel: {storePhone}</div>}
+              {taxNumber && <div style={{ fontSize: '11px', color: '#333333' }}>Tax Reg: {taxNumber}</div>}
             </div>
 
-            <div style={{ padding: '4px 0', borderBottom: '1px dashed #000', fontSize: '10px' }}>
-              <div>Invoice: <strong>{sale.invoice_number}</strong></div>
-              <div>Date: {sale.sale_date}</div>
-              <div>Cashier: {sale.cashier_name || 'Counter'}</div>
-              {sale.customer_name && <div>Customer: {sale.customer_name}</div>}
-              <div>Payment: {sale.payment_method}</div>
+            <div style={{ padding: '6px 0', borderBottom: '1px dashed #666', fontSize: '11px', color: '#000000' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <span>Invoice:</span>
+                <strong>{sale.invoice_number}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <span>Date:</span>
+                <span>{sale.sale_date}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <span>Cashier:</span>
+                <span>{sale.cashier_name || 'Counter'}</span>
+              </div>
+              {sale.customer_name && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                  <span>Customer:</span>
+                  <span>{sale.customer_name}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Payment:</span>
+                <strong>{sale.payment_method}</strong>
+              </div>
             </div>
 
-            <div style={{ padding: '4px 0', borderBottom: '1px dashed #000' }}>
-              <table style={{ width: '100%', fontSize: '10px', textAlign: 'left', borderCollapse: 'collapse' }}>
+            <div style={{ padding: '6px 0', borderBottom: '1px dashed #666', color: '#000000' }}>
+              <table style={{ width: '100%', fontSize: '11px', textAlign: 'left', borderCollapse: 'collapse', color: '#000000' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #000' }}>
-                    <th style={{ width: '55%' }}>Item</th>
-                    <th style={{ width: '15%', textAlign: 'center' }}>Qty</th>
-                    <th style={{ width: '30%', textAlign: 'right' }}>Total</th>
+                  <tr style={{ borderBottom: '1px solid #ccc' }}>
+                    <th style={{ width: '50%', paddingBottom: '4px', fontWeight: 'bold' }}>Item</th>
+                    <th style={{ width: '16%', paddingBottom: '4px', textAlign: 'center', fontWeight: 'bold' }}>Qty</th>
+                    <th style={{ width: '34%', paddingBottom: '4px', textAlign: 'right', fontWeight: 'bold' }}>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item: any, idx: number) => (
                     <tr key={idx}>
-                      <td style={{ paddingTop: '2px' }}>
-                        <div><strong>{item.article || item.product_name || item.name}</strong></div>
-                        <div style={{ fontSize: '9px', color: '#444' }}>
+                      <td style={{ paddingTop: '4px', paddingBottom: '2px' }}>
+                        <div style={{ fontWeight: 'bold', color: '#000000' }}>{item.article || item.product_name || item.name}</div>
+                        <div style={{ fontSize: '10px', color: '#555555' }}>
                           {currencySymbol} {formatStockPrice(item.unit_price)}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'center', verticalAlign: 'top', paddingTop: '4px', color: '#000000' }}>{item.quantity}</td>
+                      <td style={{ textAlign: 'right', verticalAlign: 'top', paddingTop: '4px', fontWeight: 600, color: '#000000' }}>
                         {currencySymbol} {formatStockPrice(item.subtotal)}
                       </td>
                     </tr>
@@ -806,54 +855,63 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               </table>
             </div>
 
-            <div style={{ padding: '4px 0', borderBottom: '1px dashed #000', fontSize: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ padding: '6px 0', borderBottom: '1px dashed #666', fontSize: '11px', color: '#000000' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                 <span>Subtotal:</span>
                 <span>{currencySymbol} {formatStockPrice(subtotal)}</span>
               </div>
               {discount > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                   <span>Discount:</span>
                   <span>-{currencySymbol} {formatStockPrice(discount)}</span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '12px', marginTop: '2px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '13px', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #ccc', color: '#000000' }}>
                 <span>TOTAL PAYABLE:</span>
                 <span>{currencySymbol} {formatStockPrice(totalAmount)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
                 <span>Cash Received:</span>
                 <span>{currencySymbol} {formatStockPrice(cashReceived)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '2px' }}>
                 <span>Change Given:</span>
                 <span>{currencySymbol} {formatStockPrice(changeGiven)}</span>
               </div>
             </div>
 
-            <div style={{ textAlign: 'center', paddingTop: '6px' }}>
-              <BarcodeSvg value={sale.invoice_number} width={1.3} height={30} fontSize={9} />
-              <div style={{ fontSize: '9px', marginTop: '4px' }}>{invoiceFooter}</div>
+            <div style={{ textAlign: 'center', paddingTop: '8px', color: '#000000' }}>
+              <div style={{ fontSize: '10px', fontStyle: 'italic', color: '#333333' }}>{invoiceFooter}</div>
+              <div style={{ fontSize: '9px', color: '#666666', marginTop: '4px' }}>*** KEEP THIS RECEIPT FOR RETURNS ***</div>
             </div>
           </div>
         ) : (
-          <div className="print-a4-invoice">
+          <div className="print-a4-invoice" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
             {/* Standard A4 Formal Print */}
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #333', paddingBottom: '10px' }}>
-              <div>
-                <h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>{storeName}</h1>
-                <p style={{ margin: '3px 0' }}>{storeAddress}</p>
-                <p style={{ margin: '3px 0' }}>Phone: {storePhone} | Email: {storeEmail}</p>
-                {taxNumber && <p style={{ margin: '3px 0', fontWeight: 'bold' }}>Tax ID: {taxNumber}</p>}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                {showReceiptLogo && receiptLogo && (
+                  <img
+                    src={receiptLogo}
+                    alt={storeName}
+                    style={{ maxHeight: '52px', maxWidth: '100px', objectFit: 'contain' }}
+                  />
+                )}
+                <div>
+                  <h1 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0, color: '#000000' }}>{storeName}</h1>
+                  <p style={{ margin: '3px 0', color: '#333333' }}>{storeAddress}</p>
+                  <p style={{ margin: '3px 0', color: '#333333' }}>Phone: {storePhone} | Email: {storeEmail}</p>
+                  {taxNumber && <p style={{ margin: '3px 0', fontWeight: 'bold', color: '#000000' }}>Tax ID: {taxNumber}</p>}
+                </div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>TAX INVOICE</h2>
-                <p style={{ margin: '4px 0', fontWeight: 'bold' }}>{sale.invoice_number}</p>
-                <p style={{ margin: '2px 0' }}>Date: {sale.sale_date}</p>
+                <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: '#000000' }}>TAX INVOICE</h2>
+                <p style={{ margin: '4px 0', fontWeight: 'bold', color: '#000000' }}>{sale.invoice_number}</p>
+                <p style={{ margin: '2px 0', color: '#444444' }}>Date: {sale.sale_date}</p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', color: '#000000' }}>
               <div>
                 <strong style={{ fontSize: '11px', textTransform: 'uppercase' }}>Billed To:</strong>
                 <div>{sale.customer_name || 'Walk-in Customer'}</div>
@@ -866,7 +924,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               </div>
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px', color: '#000000' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f0f0f0', borderBottom: '1px solid #000' }}>
                   <th style={{ padding: '6px', textAlign: 'left' }}>#</th>
@@ -893,7 +951,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               </tbody>
             </table>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', color: '#000000' }}>
               <div style={{ width: '240px', lineHeight: '1.6' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Subtotal:</span>
@@ -920,10 +978,9 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({
               </div>
             </div>
 
-            <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', color: '#000000' }}>
               <div>
-                <BarcodeSvg value={sale.invoice_number} width={1.4} height={35} fontSize={10} />
-                <div style={{ fontSize: '10px', marginTop: '6px' }}>{invoiceFooter}</div>
+                <div style={{ fontSize: '10px' }}>{invoiceFooter}</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ width: '150px', borderBottom: '1px solid #000', marginBottom: '4px' }}></div>

@@ -231,9 +231,31 @@ router.post('/restore', requireAuth, requireAdmin, async (req: AuthenticatedRequ
 
           // Strip any fields that don't belong to schema if necessary, or sanitize
           const cleanRow = { ...row };
+          if (tableName === 'company_settings') {
+            delete cleanRow.min_profit_margin;
+            delete cleanRow.max_profit_margin;
+            delete cleanRow.fixed_profit_margin;
+            delete cleanRow.min_profit_amount;
+            delete cleanRow.max_profit_amount;
+            delete cleanRow.fixed_profit_amount;
+            delete cleanRow.default_profit_margin;
+            if (cleanRow.is_installed && cleanRow.pricing_policy_locked === undefined) {
+              cleanRow.pricing_policy_locked = true;
+            }
+          }
           if (tableName === 'products') {
             if ((cleanRow.cost_price === undefined || cleanRow.cost_price === null) && cleanRow.purchase_price !== undefined) {
               cleanRow.cost_price = cleanRow.purchase_price;
+            }
+            const costNum = Math.round(Number(cleanRow.cost_price) || 0);
+            if (cleanRow.selling_price === undefined) {
+              cleanRow.selling_price = Math.round(Number(cleanRow.sale_price ?? cleanRow.max_sale_price ?? cleanRow.min_sale_price ?? costNum));
+            }
+            if (cleanRow.min_price === undefined) {
+              cleanRow.min_price = Math.round(Number(cleanRow.min_sale_price ?? cleanRow.selling_price ?? costNum));
+            }
+            if (cleanRow.max_price === undefined) {
+              cleanRow.max_price = Math.round(Number(cleanRow.max_sale_price ?? cleanRow.selling_price ?? cleanRow.min_price ?? costNum));
             }
             if (!cleanRow.brand && cleanRow.brand_name) cleanRow.brand = cleanRow.brand_name;
             if (!cleanRow.brand) cleanRow.brand = 'Local';
@@ -244,8 +266,18 @@ router.post('/restore', requireAuth, requireAdmin, async (req: AuthenticatedRequ
             delete cleanRow.brand_name;
             delete cleanRow.category_name;
             delete cleanRow.purchase_price;
+            delete cleanRow.sale_price;
             delete cleanRow.min_sale_price;
             delete cleanRow.max_sale_price;
+            delete cleanRow.margin_type;
+            delete cleanRow.profit_calculation_method;
+            delete cleanRow.profit_margin;
+            delete cleanRow.profit_amount;
+            delete cleanRow.custom_min_margin;
+            delete cleanRow.custom_max_margin;
+            delete cleanRow.max_profit_margin;
+            delete cleanRow.min_profit_margin;
+            delete cleanRow.fixed_amount_margin;
           }
 
           // Convert any date strings or nested objects cleanly

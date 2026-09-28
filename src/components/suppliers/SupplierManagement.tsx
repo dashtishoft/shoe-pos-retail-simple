@@ -557,7 +557,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                               setReturnSupplierId(sup.id);
                               setIsReturnModalOpen(true);
                             }}
-                            title="Return Defective Cartons to Supplier"
+                            title="Return Defective Items to Supplier"
                             className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/80 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 dark:text-rose-400 dark:border-rose-900/60 transition cursor-pointer"
                           >
                             <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
@@ -909,8 +909,7 @@ export const SupplierManagement: React.FC<SupplierManagementProps> = ({
                               {r.original_purchase_number || '-'}
                             </td>
                             <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-700 dark:text-purple-200">
-                              {r.total_cartons_returned > 0 && `${r.total_cartons_returned} ctn `}
-                              {r.total_pairs_returned > 0 ? `${r.total_pairs_returned} pairs` : ''}
+                              {r.total_pairs || r.total_pairs_returned ? `${r.total_pairs || r.total_pairs_returned} pairs` : '-'}
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-black text-rose-700 dark:text-rose-400">
                               {currencySymbol} {formatStockPrice(r.total_debit_amount)}

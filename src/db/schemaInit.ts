@@ -50,9 +50,11 @@ export async function ensureDatabaseSchema(): Promise<void> {
       purchase_prefix TEXT NOT NULL DEFAULT 'PUR-',
       barcode_prefix TEXT NOT NULL DEFAULT '0108923',
       invoice_footer TEXT NOT NULL DEFAULT 'Thank you for shopping with us!',
+      show_receipt_logo BOOLEAN NOT NULL DEFAULT false,
+      receipt_logo TEXT DEFAULT '',
       low_stock_limit INTEGER NOT NULL DEFAULT 5,
-      min_profit_margin NUMERIC(5, 2) DEFAULT 10.00,
-      max_profit_margin NUMERIC(5, 2) DEFAULT 30.00,
+      pricing_mode TEXT NOT NULL DEFAULT 'FIXED',
+      pricing_policy_locked BOOLEAN NOT NULL DEFAULT false,
       is_installed BOOLEAN DEFAULT false,
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
@@ -61,13 +63,22 @@ export async function ensureDatabaseSchema(): Promise<void> {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS tax_id TEXT DEFAULT '';
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS currency_name TEXT DEFAULT 'Pakistani Rupee';
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS is_installed BOOLEAN DEFAULT false;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode TEXT DEFAULT 'NEGOTIABLE';
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_margin NUMERIC(5, 2) DEFAULT 30.00;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_amount NUMERIC(12, 2) DEFAULT 0.00;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_margin NUMERIC(5, 2) DEFAULT 15.00;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_amount NUMERIC(12, 2) DEFAULT 0.00;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_margin NUMERIC(5, 2) DEFAULT 30.00;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) DEFAULT 0.00;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode TEXT DEFAULT 'FIXED';
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_policy_locked BOOLEAN DEFAULT false;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS show_receipt_logo BOOLEAN DEFAULT false;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS receipt_logo TEXT DEFAULT '';
+
+    -- Lock pricing_policy if the store is already installed
+    UPDATE company_settings SET pricing_policy_locked = true WHERE is_installed = true;
+
+    -- Permanently remove redundant margin calculation columns from company_settings
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS fixed_profit_margin;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS fixed_profit_amount;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS min_profit_margin;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS min_profit_amount;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS max_profit_margin;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS max_profit_amount;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS default_profit_margin;
 
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
@@ -80,6 +91,9 @@ export async function ensureDatabaseSchema(): Promise<void> {
       primary_image_url TEXT DEFAULT '',
       description TEXT DEFAULT '',
       cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+      selling_price INTEGER NOT NULL DEFAULT 0,
+      min_price INTEGER NOT NULL DEFAULT 0,
+      max_price INTEGER NOT NULL DEFAULT 0,
       total_stock INTEGER NOT NULL DEFAULT 0,
       low_stock_limit INTEGER NOT NULL DEFAULT 5,
       active BOOLEAN NOT NULL DEFAULT true,
@@ -137,54 +151,63 @@ export async function ensureDatabaseSchema(): Promise<void> {
     END $$;
     ALTER TABLE products DROP COLUMN IF EXISTS purchase_price;
 
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS margin_type TEXT DEFAULT 'FIXED';
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_calculation_method TEXT DEFAULT 'FIXED_AMOUNT';
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC(5, 2);
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_amount NUMERIC(12, 2);
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_min_margin NUMERIC(5, 2);
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_max_margin NUMERIC(5, 2);
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price INTEGER;
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS min_sale_price INTEGER;
-    ALTER TABLE products ADD COLUMN IF NOT EXISTS max_sale_price INTEGER;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price INTEGER DEFAULT 0;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS min_price INTEGER DEFAULT 0;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS max_price INTEGER DEFAULT 0;
 
-    -- Data Migration for existing products: populate integer price fields if not set
+    -- Data Migration: Migrate legacy sale_price, min_sale_price, max_sale_price into selling_price, min_price, max_price
     DO $$
     DECLARE
       v_pricing_mode TEXT;
-      v_fixed_margin NUMERIC;
-      v_min_margin NUMERIC;
-      v_max_margin NUMERIC;
     BEGIN
-      SELECT 
-        COALESCE(pricing_mode, 'FIXED'),
-        COALESCE(fixed_profit_margin, 30.00),
-        COALESCE(min_profit_margin, 15.00),
-        COALESCE(max_profit_margin, 30.00)
-      INTO v_pricing_mode, v_fixed_margin, v_min_margin, v_max_margin
+      SELECT COALESCE(pricing_mode, 'FIXED')
+      INTO v_pricing_mode
       FROM company_settings
       LIMIT 1;
 
-      IF v_fixed_margin IS NULL THEN v_fixed_margin := 30.00; END IF;
-      IF v_min_margin IS NULL THEN v_min_margin := 15.00; END IF;
-      IF v_max_margin IS NULL THEN v_max_margin := 30.00; END IF;
+      IF v_pricing_mode IS NULL THEN v_pricing_mode := 'FIXED'; END IF;
 
-      UPDATE products
-      SET 
-        margin_type = COALESCE(margin_type, 'FIXED'),
-        sale_price = CASE 
-          WHEN sale_price IS NOT NULL AND sale_price > 0 THEN sale_price
-          ELSE ROUND(cost_price * (1 + v_fixed_margin / 100))::INTEGER
-        END,
-        min_sale_price = CASE 
-          WHEN min_sale_price IS NOT NULL AND min_sale_price > 0 THEN min_sale_price
-          ELSE ROUND(cost_price * (1 + v_min_margin / 100))::INTEGER
-        END,
-        max_sale_price = CASE 
-          WHEN max_sale_price IS NOT NULL AND max_sale_price > 0 THEN max_sale_price
-          ELSE ROUND(cost_price * (1 + v_max_margin / 100))::INTEGER
-        END
-      WHERE sale_price IS NULL OR min_sale_price IS NULL OR max_sale_price IS NULL;
+      IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='sale_price') THEN
+        UPDATE products
+        SET
+          selling_price = COALESCE(NULLIF(selling_price, 0), sale_price, max_sale_price, min_sale_price, ROUND(cost_price)::INTEGER, 0),
+          min_price = COALESCE(NULLIF(min_price, 0), min_sale_price, sale_price, ROUND(cost_price)::INTEGER, 0),
+          max_price = COALESCE(NULLIF(max_price, 0), max_sale_price, sale_price, min_sale_price, ROUND(cost_price)::INTEGER, 0);
+      END IF;
+
+      -- Ensure FIXED policy rule: selling_price = min_price = max_price when store is FIXED
+      IF UPPER(v_pricing_mode) = 'FIXED' THEN
+        UPDATE products
+        SET
+          selling_price = GREATEST(COALESCE(NULLIF(selling_price, 0), max_price, min_price, ROUND(cost_price)::INTEGER, 0), ROUND(cost_price)::INTEGER),
+          min_price = GREATEST(COALESCE(NULLIF(selling_price, 0), max_price, min_price, ROUND(cost_price)::INTEGER, 0), ROUND(cost_price)::INTEGER),
+          max_price = GREATEST(COALESCE(NULLIF(selling_price, 0), max_price, min_price, ROUND(cost_price)::INTEGER, 0), ROUND(cost_price)::INTEGER);
+      ELSE
+        UPDATE products
+        SET
+          min_price = GREATEST(COALESCE(NULLIF(min_price, 0), selling_price, ROUND(cost_price)::INTEGER, 0), ROUND(cost_price)::INTEGER),
+          max_price = GREATEST(COALESCE(NULLIF(max_price, 0), selling_price, min_price, ROUND(cost_price)::INTEGER, 0), COALESCE(NULLIF(min_price, 0), ROUND(cost_price)::INTEGER, 0)),
+          selling_price = GREATEST(COALESCE(NULLIF(max_price, 0), selling_price, min_price, ROUND(cost_price)::INTEGER, 0), COALESCE(NULLIF(min_price, 0), ROUND(cost_price)::INTEGER, 0));
+      END IF;
     END $$;
+
+    -- Permanently drop all legacy margin and old price columns from products
+    ALTER TABLE products DROP COLUMN IF EXISTS margin_type;
+    ALTER TABLE products DROP COLUMN IF EXISTS profit_calculation_method;
+    ALTER TABLE products DROP COLUMN IF EXISTS profit_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS profit_amount;
+    ALTER TABLE products DROP COLUMN IF EXISTS custom_min_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS custom_max_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS max_profit_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS min_profit_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS fixed_amount_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS sale_price;
+    ALTER TABLE products DROP COLUMN IF EXISTS min_sale_price;
+    ALTER TABLE products DROP COLUMN IF EXISTS max_sale_price;
+    ALTER TABLE products DROP COLUMN IF EXISTS size;
+    ALTER TABLE products DROP COLUMN IF EXISTS color;
+    DROP TABLE IF EXISTS product_sizes CASCADE;
+    DROP TABLE IF EXISTS product_colors CASCADE;
 
     CREATE INDEX IF NOT EXISTS products_barcode_idx ON products(barcode);
     CREATE INDEX IF NOT EXISTS products_sku_idx ON products(sku);
@@ -283,13 +306,14 @@ export async function ensureDatabaseSchema(): Promise<void> {
       id SERIAL PRIMARY KEY,
       purchase_return_id INTEGER NOT NULL REFERENCES purchase_returns(id) ON DELETE CASCADE,
       product_id INTEGER NOT NULL REFERENCES products(id),
-      carton_quantity INTEGER NOT NULL DEFAULT 1,
-      pairs_per_carton INTEGER NOT NULL DEFAULT 1,
       quantity INTEGER NOT NULL,
       unit_purchase_price NUMERIC(12, 2) NOT NULL,
       subtotal NUMERIC(12, 2) NOT NULL,
-      defect_type TEXT DEFAULT 'DEFECTIVE_CARTON'
+      defect_type TEXT DEFAULT 'MANUFACTURING_DEFECT'
     );
+    ALTER TABLE purchase_return_items
+      DROP COLUMN IF EXISTS carton_quantity,
+      DROP COLUMN IF EXISTS pairs_per_carton;
     CREATE INDEX IF NOT EXISTS purchase_return_items_return_idx ON purchase_return_items(purchase_return_id);
     CREATE INDEX IF NOT EXISTS purchase_return_items_product_idx ON purchase_return_items(product_id);
 
@@ -361,30 +385,8 @@ export async function ensureDatabaseSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS stock_movements_product_idx ON stock_movements(product_id);
     CREATE INDEX IF NOT EXISTS stock_movements_created_at_idx ON stock_movements(created_at);
 
-    CREATE TABLE IF NOT EXISTS carton_packs (
-      id SERIAL PRIMARY KEY,
-      pack_name TEXT NOT NULL,
-      pairs_per_carton INTEGER NOT NULL,
-      is_default BOOLEAN NOT NULL DEFAULT false,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-
-    -- Seed standard carton packing configurations if table is freshly created
-    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
-    SELECT 'Half Carton (6 Pairs)', 6, false
-    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Half Carton (6 Pairs)');
-
-    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
-    SELECT 'Standard Carton (12 Pairs)', 12, true
-    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Standard Carton (12 Pairs)');
-
-    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
-    SELECT 'Wholesale Pack (24 Pairs)', 24, false
-    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Wholesale Pack (24 Pairs)');
-
-    INSERT INTO carton_packs (pack_name, pairs_per_carton, is_default)
-    SELECT 'Master Carton (36 Pairs)', 36, false
-    WHERE NOT EXISTS (SELECT 1 FROM carton_packs WHERE pack_name = 'Master Carton (36 Pairs)');
+    -- Permanently remove obsolete carton_packs table if present
+    DROP TABLE IF EXISTS carton_packs CASCADE;
   `);
 }
 
@@ -399,7 +401,6 @@ export async function dropAllTables(): Promise<void> {
   // 1. Explicitly drop all known application tables with CASCADE
   await pgClient.exec(`
     DROP TABLE IF EXISTS 
-      carton_packs,
       password_reset_tokens,
       stock_movements,
       return_items,
@@ -412,8 +413,6 @@ export async function dropAllTables(): Promise<void> {
       purchase_items,
       purchases,
       products,
-      product_sizes,
-      product_colors,
       customers,
       suppliers,
       categories,

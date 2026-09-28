@@ -479,7 +479,7 @@ export const SupplierLedgerModal: React.FC<SupplierLedgerModalProps> = ({
                     {returnsOnly.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="py-10 text-center text-slate-400">
-                          No defective carton returns on record for this supplier.
+                          No defective item returns on record for this supplier.
                         </td>
                       </tr>
                     ) : (

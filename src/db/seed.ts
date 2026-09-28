@@ -59,8 +59,14 @@ export async function initAndSeedDb() {
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS tax_id TEXT DEFAULT '';
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS currency_name TEXT DEFAULT 'Pakistani Rupee';
     ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS is_installed BOOLEAN DEFAULT false;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_margin NUMERIC(5, 2) DEFAULT 10.00;
-    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_margin NUMERIC(5, 2) DEFAULT 30.00;
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode TEXT DEFAULT 'FIXED';
+    ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_policy_locked BOOLEAN DEFAULT false;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS min_profit_margin;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS max_profit_margin;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS fixed_profit_margin;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS min_profit_amount;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS max_profit_amount;
+    ALTER TABLE company_settings DROP COLUMN IF EXISTS fixed_profit_amount;
     UPDATE company_settings SET tax_id = tax_number WHERE (tax_id IS NULL OR tax_id = '') AND (tax_number IS NOT NULL AND tax_number != '');
     UPDATE company_settings SET currency_name = 'Pakistani Rupee' WHERE currency_name IS NULL OR currency_name = '';
     UPDATE company_settings SET barcode_prefix = '0108923' WHERE LENGTH(barcode_prefix) != 7 OR barcode_prefix !~ '^[0-9]{7}$';
@@ -75,6 +81,9 @@ export async function initAndSeedDb() {
       primary_image_url TEXT DEFAULT '',
       description TEXT DEFAULT '',
       cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+      selling_price INTEGER NOT NULL DEFAULT 0,
+      min_price INTEGER NOT NULL DEFAULT 0,
+      max_price INTEGER NOT NULL DEFAULT 0,
       total_stock INTEGER NOT NULL DEFAULT 0,
       low_stock_limit INTEGER NOT NULL DEFAULT 5,
       active BOOLEAN NOT NULL DEFAULT true,
@@ -124,6 +133,9 @@ export async function initAndSeedDb() {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS article TEXT;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS primary_image_url TEXT;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(12, 2) DEFAULT 0.00;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS min_price INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS max_price INTEGER NOT NULL DEFAULT 0;
     DO $$
     BEGIN
       IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='purchase_price') THEN
@@ -131,8 +143,17 @@ export async function initAndSeedDb() {
       END IF;
     END $$;
     ALTER TABLE products DROP COLUMN IF EXISTS purchase_price;
+    ALTER TABLE products DROP COLUMN IF EXISTS sale_price;
     ALTER TABLE products DROP COLUMN IF EXISTS min_sale_price;
     ALTER TABLE products DROP COLUMN IF EXISTS max_sale_price;
+    ALTER TABLE products DROP COLUMN IF EXISTS margin_type;
+    ALTER TABLE products DROP COLUMN IF EXISTS profit_calculation_method;
+    ALTER TABLE products DROP COLUMN IF EXISTS profit_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS profit_amount;
+    ALTER TABLE products DROP COLUMN IF EXISTS custom_min_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS custom_max_margin;
+    ALTER TABLE products DROP COLUMN IF EXISTS size;
+    ALTER TABLE products DROP COLUMN IF EXISTS color;
 
     CREATE TABLE IF NOT EXISTS customers (
       id SERIAL PRIMARY KEY,
@@ -331,13 +352,13 @@ export async function initAndSeedDb() {
     const p1 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
         name, brand, category, article, sku, barcode, primary_image_url, 
-        description, cost_price, total_stock, low_stock_limit, active
+        description, cost_price, selling_price, min_price, max_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Air Zoom Velocity Runner',
         'Nike', 'Casual Shoes', 'SP-0001', 'NIK-SP-0001-1', '01089230001',
         'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
         'Breathable mesh running shoes with responsive Zoom air cushioning sole.',
-        4200.00, 18, 5, true
+        4200.00, 5500, 5500, 5500, 18, 5, true
       ) RETURNING id;
     `);
 
@@ -353,12 +374,13 @@ export async function initAndSeedDb() {
     const p2 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
         name, brand, category, article, sku, barcode, primary_image_url, 
-        description, cost_price, total_stock, low_stock_limit, active
+        description, cost_price, selling_price, min_price, max_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Classic Derby Leather Oxford',
         'Clarks', 'Formal Dress Shoes', 'FO-0002', 'CLA-FO-0002-2', '01089230002',
+        '',
         'Handcrafted genuine full-grain leather dress shoes with Goodyear welted leather sole.',
-        5500.00, 12, 4, true
+        5500.00, 7200, 7200, 7200, 12, 4, true
       ) RETURNING id;
     `);
     const p2Id = p2.rows[0].id;
@@ -372,13 +394,13 @@ export async function initAndSeedDb() {
     const p3 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
         name, brand, category, article, sku, barcode, primary_image_url, 
-        description, cost_price, total_stock, low_stock_limit, active
+        description, cost_price, selling_price, min_price, max_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Cloudfoam Lifestyle Retro Sneaker',
         'Adidas', 'Casual Shoes', 'CA-0003', 'ADI-CA-0003-3', '01089230003',
         'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=600&auto=format&fit=crop&q=80',
         'Minimalist everyday sneakers with cushioned Cloudfoam sockliner for all-day comfort.',
-        3100.00, 24, 6, true
+        3100.00, 4000, 4000, 4000, 24, 6, true
       ) RETURNING id;
     `);
     const p3Id = p3.rows[0].id;
@@ -392,13 +414,13 @@ export async function initAndSeedDb() {
     const p4 = await pgClient.query<{ id: number }>(`
       INSERT INTO products (
         name, brand, category, article, sku, barcode, primary_image_url, 
-        description, cost_price, total_stock, low_stock_limit, active
+        description, cost_price, selling_price, min_price, max_price, total_stock, low_stock_limit, active
       ) VALUES (
         'Bata Power Pro Court Trainer',
         'Bata', 'Casual Shoes', 'SP-0004', 'BAT-SP-0004-4', '01089230004',
         'https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=600&auto=format&fit=crop&q=80',
         'Durable court trainers with non-marking rubber outsole.',
-        2200.00, 3, 5, true
+        2200.00, 2900, 2900, 2900, 3, 5, true
       ) RETURNING id;
     `);
     const p4Id = p4.rows[0].id;

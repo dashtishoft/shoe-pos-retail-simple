@@ -2027,6 +2027,15 @@ aside {
   .dark .text-gray-500 {
     color: #64748b !important;
   }
+
+  /* Invoice Preview Dark Mode Pure White Text Enforcement (Store Name, Article, Rs Price, Total Payable) */
+  .dark .invoice-preview-receipt .invoice-store-name,
+  .dark .invoice-preview-receipt .invoice-item-article,
+  .dark .invoice-preview-receipt .invoice-item-price,
+  .dark .invoice-preview-receipt .invoice-total-payable,
+  .dark .invoice-preview-receipt .invoice-total-payable span {
+    color: #ffffff !important;
+  }
   .dark .bg-slate-200 {
     background-color: #131F38 !important;
   }
@@ -2059,11 +2068,19 @@ aside {
 
   /* Print Optimization */
   @media print {
-    body {
-      background: white !important;
-      color: black !important;
+    html,
+    html.dark,
+    body,
+    .dark body,
+    #root,
+    main {
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      color: #000000 !important;
+      color-scheme: light !important;
       margin: 0 !important;
       padding: 0 !important;
+      box-shadow: none !important;
     }
     
     .no-print {
@@ -2072,6 +2089,8 @@ aside {
     
     .print-only {
       display: block !important;
+      background: #ffffff !important;
+      color: #000000 !important;
     }
 
     /* Standard A4 invoice printing */

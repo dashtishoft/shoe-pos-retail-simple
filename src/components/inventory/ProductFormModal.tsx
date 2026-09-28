@@ -42,12 +42,11 @@ import {
 } from '../../utils/sku.ts';
 import { BarcodeSvg } from '../common/BarcodeSvg.tsx';
 import { AiProductSuggester } from './AiProductSuggester.tsx';
-import { cleanStockPriceInput, formatStockPrice, getProductRetailPrice, getProductMinFloorPrice } from '../../utils/priceFormat.ts';
+import { cleanStockPriceInput, formatStockPrice } from '../../utils/priceFormat.ts';
 import {
-  calculateAutomaticPricing,
-  smartRoundUp,
-  PricingResult,
-} from '../../utils/pricing.ts';
+  validateAndNormalizeProductPricing,
+  PricingPolicy,
+} from '../../schemas/productSchema.ts';
 import { BrandLogo } from '../common/BrandLogo.tsx';
 
 interface ProductFormModalProps {
@@ -125,220 +124,70 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   };
 
   // Step 2: Pricing Specifications State (Integer values only, no decimals)
-  // Uses global pricing policy configured and saved in Settings
-  const pricingPolicy: 'FIXED' | 'NEGOTIABLE' = (
-    String(effectiveSettings?.pricing_mode || effectiveSettings?.pricingMode || 'NEGOTIABLE').toUpperCase() === 'FIXED'
-      ? 'FIXED'
-      : 'NEGOTIABLE'
+  // Uses global locked pricing policy configured in Installation Wizard / Settings
+  const pricingPolicy: PricingPolicy = (
+    String(
+      effectiveSettings?.pricing_mode ||
+      effectiveSettings?.pricingMode ||
+      effectiveSettings?.pricingPolicy ||
+      'FIXED'
+    ).toUpperCase() === 'NEGOTIABLE'
+      ? 'NEGOTIABLE'
+      : 'FIXED'
   );
 
-  // Cost Price (strictly whole integer)
-  const [costPrice, setCostPrice] = useState<number | ''>(() => {
-    const raw = product?.costPrice ?? product?.cost_price;
-    if (raw !== undefined && raw !== null && raw !== '') {
-      const num = parseInt(cleanStockPriceInput(raw), 10);
-      return !isNaN(num) ? num : '';
+  const parseInitialPrice = (val: any): number | '' => {
+    if (val !== undefined && val !== null && val !== '') {
+      const num = parseInt(cleanStockPriceInput(val), 10);
+      return !isNaN(num) && num >= 0 ? num : '';
     }
     return '';
-  });
-
-  // Configured default profit margins & amounts from company settings
-  const parseSettingNum = (val: any, fallback: number): number => {
-    if (typeof val === 'number' && !isNaN(val)) return Math.max(0, Math.round(val));
-    if (val !== undefined && val !== null && val !== '') {
-      const parsed = parseFloat(String(val));
-      if (!isNaN(parsed)) return Math.max(0, Math.round(parsed));
-    }
-    return fallback;
   };
 
-  const configuredFixedMargin = parseSettingNum(
-    effectiveSettings?.fixed_profit_margin ?? effectiveSettings?.fixedProfitMargin,
-    30
+  // Cost Price (mandatory for both FIXED and NEGOTIABLE)
+  const [costPrice, setCostPrice] = useState<number | ''>(() =>
+    parseInitialPrice(product?.costPrice ?? product?.cost_price)
   );
 
-  const configuredFixedAmount = parseSettingNum(
-    effectiveSettings?.fixed_profit_amount ?? effectiveSettings?.fixedProfitAmount,
-    0
+  // Price (used for FIXED policy: sellingPrice = minPrice = maxPrice)
+  const [sellingPrice, setSellingPrice] = useState<number | ''>(() =>
+    parseInitialPrice(
+      product?.sellingPrice ??
+      product?.selling_price ??
+      product?.salePrice ??
+      product?.sale_price ??
+      product?.maxPrice ??
+      product?.max_price
+    )
   );
 
-  const configuredMinMargin = parseSettingNum(
-    effectiveSettings?.min_profit_margin ?? effectiveSettings?.minProfitMargin,
-    15
+  // Min Selling Price (used for NEGOTIABLE policy)
+  const [minPrice, setMinPrice] = useState<number | ''>(() =>
+    parseInitialPrice(
+      product?.minPrice ??
+      product?.min_price ??
+      product?.minSalePrice ??
+      product?.min_sale_price ??
+      product?.sellingPrice ??
+      product?.selling_price
+    )
   );
 
-  const configuredMinAmount = parseSettingNum(
-    effectiveSettings?.min_profit_amount ?? effectiveSettings?.minProfitAmount,
-    0
+  // Max Selling Price (used for NEGOTIABLE policy)
+  const [maxPrice, setMaxPrice] = useState<number | ''>(() =>
+    parseInitialPrice(
+      product?.maxPrice ??
+      product?.max_price ??
+      product?.maxSalePrice ??
+      product?.max_sale_price ??
+      product?.sellingPrice ??
+      product?.selling_price
+    )
   );
 
-  const configuredMaxMargin = parseSettingNum(
-    effectiveSettings?.max_profit_margin ?? effectiveSettings?.maxProfitMargin,
-    30
-  );
+  const [pricingFieldErrors, setPricingFieldErrors] = useState<Record<string, string>>({});
 
-  const configuredMaxAmount = parseSettingNum(
-    effectiveSettings?.max_profit_amount ?? effectiveSettings?.maxProfitAmount,
-    0
-  );
-
-  // Saved product initial cost & sale price
-  const initialCostVal = product
-    ? Math.max(0, Math.round(Number(product.costPrice ?? product.cost_price ?? 0)))
-    : 0;
-
-  const initialSavedSalePrice = product && (product.salePrice !== undefined && product.salePrice !== null || product.sale_price !== undefined && product.sale_price !== null)
-    ? Math.round(Number(product.salePrice ?? product.sale_price))
-    : 0;
-
-  // Profit Calculation Method Tab State:
-  // Default to 'FIXED_AMOUNT' when adding a new product, or use the product's saved method when editing
-  const [profitCalcMethod, setProfitCalcMethod] = useState<'FIXED_AMOUNT' | 'PROFIT_MARGIN'>(() => {
-    if (product) {
-      const savedMethod = String(
-        product.profitCalculationMethod || product.profit_calculation_method || ''
-      ).toUpperCase();
-      if (savedMethod === 'PROFIT_MARGIN') {
-        return 'PROFIT_MARGIN';
-      }
-      if (savedMethod === 'FIXED_AMOUNT') {
-        return 'FIXED_AMOUNT';
-      }
-    }
-    return 'FIXED_AMOUNT';
-  });
-
-  // Track whether the user has explicitly overridden the default Settings values in this modal
-  const hasSavedProductProfitAmount = Boolean(
-    product && Number(product.profitAmount ?? product.profit_amount ?? 0) > 0
-  );
-  const hasSavedProductProfitMargin = Boolean(
-    product && Number(product.profitMargin ?? product.profit_margin ?? 0) > 0
-  );
-
-  const [isFixedAmountOverridden, setIsFixedAmountOverridden] = useState<boolean>(hasSavedProductProfitAmount);
-  const [isFixedMarginOverridden, setIsFixedMarginOverridden] = useState<boolean>(hasSavedProductProfitMargin);
-  const [isSalePriceOverridden, setIsSalePriceOverridden] = useState<boolean>(Boolean(product && initialSavedSalePrice > 0));
-
-  // Fixed Pricing State (Taken from Settings unless overridden by user in modal)
-  const [fixedMarginPercent, setFixedMarginPercent] = useState<number | ''>(() => {
-    if (hasSavedProductProfitMargin) {
-      return Math.round(Number(product.profitMargin ?? product.profit_margin));
-    }
-    if (product && initialSavedSalePrice > 0 && initialCostVal > 0) {
-      const profit = initialSavedSalePrice - initialCostVal;
-      return Math.round((profit / initialCostVal) * 100);
-    }
-    return configuredFixedMargin;
-  });
-
-  const [fixedProfitAmount, setFixedProfitAmount] = useState<number | ''>(() => {
-    if (hasSavedProductProfitAmount) {
-      return Math.max(0, Math.round(Number(product.profitAmount ?? product.profit_amount)));
-    }
-    if (product && initialSavedSalePrice > initialCostVal && configuredFixedAmount === 0) {
-      return Math.max(0, initialSavedSalePrice - initialCostVal);
-    }
-    return configuredFixedAmount;
-  });
-
-  const [customFixedSalePrice, setCustomFixedSalePrice] = useState<number | ''>(() => {
-    if (initialSavedSalePrice > 0) {
-      return initialSavedSalePrice;
-    }
-    return '';
-  });
-
-  // Negotiable Pricing State
-  const initialSavedMinPrice = product && (product.minSalePrice !== undefined && product.minSalePrice !== null || product.min_sale_price !== undefined && product.min_sale_price !== null)
-    ? Math.round(Number(product.minSalePrice ?? product.min_sale_price))
-    : 0;
-
-  const initialSavedMaxPrice = product && (product.maxSalePrice !== undefined && product.maxSalePrice !== null || product.max_sale_price !== undefined && product.max_sale_price !== null)
-    ? Math.round(Number(product.maxSalePrice ?? product.max_sale_price))
-    : 0;
-
-  const [isMinAmountOverridden, setIsMinAmountOverridden] = useState<boolean>(Boolean(product && initialSavedMinPrice > 0));
-  const [isMaxAmountOverridden, setIsMaxAmountOverridden] = useState<boolean>(Boolean(product && initialSavedMaxPrice > 0));
-  const [isMinMarginOverridden, setIsMinMarginOverridden] = useState<boolean>(Boolean(product && initialSavedMinPrice > 0));
-  const [isMaxMarginOverridden, setIsMaxMarginOverridden] = useState<boolean>(Boolean(product && initialSavedMaxPrice > 0));
-  const [isMinPriceOverridden, setIsMinPriceOverridden] = useState<boolean>(Boolean(product && initialSavedMinPrice > 0));
-  const [isMaxPriceOverridden, setIsMaxPriceOverridden] = useState<boolean>(Boolean(product && initialSavedMaxPrice > 0));
-
-  const [negotiableMinPrice, setNegotiableMinPrice] = useState<number | ''>(() => {
-    return initialSavedMinPrice > 0 ? initialSavedMinPrice : '';
-  });
-
-  const [negotiableMinPercent, setNegotiableMinPercent] = useState<number | ''>(() => {
-    if (initialSavedMinPrice > 0 && initialCostVal > 0) {
-      return Math.round(((initialSavedMinPrice - initialCostVal) / initialCostVal) * 100);
-    }
-    return configuredMinMargin;
-  });
-
-  const [negotiableMinAmount, setNegotiableMinAmount] = useState<number | ''>(() => {
-    if (product && initialSavedMinPrice > initialCostVal && configuredMinAmount === 0) {
-      return Math.max(0, initialSavedMinPrice - initialCostVal);
-    }
-    return configuredMinAmount;
-  });
-
-  const [negotiableMaxPrice, setNegotiableMaxPrice] = useState<number | ''>(() => {
-    return initialSavedMaxPrice > 0 ? initialSavedMaxPrice : '';
-  });
-
-  const [negotiableMaxPercent, setNegotiableMaxPercent] = useState<number | ''>(() => {
-    if (initialSavedMaxPrice > 0 && initialCostVal > 0) {
-      return Math.round(((initialSavedMaxPrice - initialCostVal) / initialCostVal) * 100);
-    }
-    return configuredMaxMargin;
-  });
-
-  const [negotiableMaxAmount, setNegotiableMaxAmount] = useState<number | ''>(() => {
-    if (product && initialSavedMaxPrice > initialCostVal && configuredMaxAmount === 0) {
-      return Math.max(0, initialSavedMaxPrice - initialCostVal);
-    }
-    return configuredMaxAmount;
-  });
-
-  // Automatically sync profit amounts & margins from Settings unless user has overridden them in this modal
-  useEffect(() => {
-    if (!isFixedAmountOverridden) {
-      setFixedProfitAmount(configuredFixedAmount);
-    }
-    if (!isFixedMarginOverridden) {
-      setFixedMarginPercent(configuredFixedMargin);
-    }
-    if (!isMinAmountOverridden) {
-      setNegotiableMinAmount(configuredMinAmount);
-    }
-    if (!isMaxAmountOverridden) {
-      setNegotiableMaxAmount(configuredMaxAmount);
-    }
-    if (!isMinMarginOverridden) {
-      setNegotiableMinPercent(configuredMinMargin);
-    }
-    if (!isMaxMarginOverridden) {
-      setNegotiableMaxPercent(configuredMaxMargin);
-    }
-  }, [
-    configuredFixedAmount,
-    configuredFixedMargin,
-    configuredMinAmount,
-    configuredMaxAmount,
-    configuredMinMargin,
-    configuredMaxMargin,
-    isFixedAmountOverridden,
-    isFixedMarginOverridden,
-    isMinAmountOverridden,
-    isMaxAmountOverridden,
-    isMinMarginOverridden,
-    isMaxMarginOverridden,
-  ]);
-
-  const [recalcNotice, setRecalcNotice] = useState<string | null>(null);
-
-  // Step 4: Barcode (Fully editable for imported / external manufacturer box barcodes or store EAN-13)
+  // Step 3: Barcode (Fully editable for imported / external manufacturer box barcodes or store EAN-13)
   const [barcode, setBarcode] = useState<string>(product?.barcode || '');
   const [barcodeValidation, setBarcodeValidation] = useState<BarcodeValidationState>({ status: 'idle' });
 
@@ -349,372 +198,31 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const articleInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Cost and price integer calculations
+  // Cost and price integer values
   const costVal = typeof costPrice === 'number' && !isNaN(costPrice) ? Math.max(0, Math.round(costPrice)) : 0;
+  const fixedPriceVal = typeof sellingPrice === 'number' && !isNaN(sellingPrice) ? Math.max(0, Math.round(sellingPrice)) : 0;
+  const negotiableMinVal = typeof minPrice === 'number' && !isNaN(minPrice) ? Math.max(0, Math.round(minPrice)) : 0;
+  const negotiableMaxVal = typeof maxPrice === 'number' && !isNaN(maxPrice) ? Math.max(0, Math.round(maxPrice)) : 0;
 
-  // Effective profit values: taken from Settings unless overridden by user in this modal
-  const activeFixedProfitAmount = isFixedAmountOverridden
-    ? (fixedProfitAmount !== '' ? Math.round(Number(fixedProfitAmount)) : 0)
-    : configuredFixedAmount;
-
-  const activeFixedMarginPercent = isFixedMarginOverridden
-    ? (fixedMarginPercent !== '' ? Number(fixedMarginPercent) : 0)
-    : configuredFixedMargin;
-
-  const activeMinProfitAmount = isMinAmountOverridden
-    ? (negotiableMinAmount !== '' ? Math.round(Number(negotiableMinAmount)) : 0)
-    : configuredMinAmount;
-
-  const activeMaxProfitAmount = isMaxAmountOverridden
-    ? (negotiableMaxAmount !== '' ? Math.round(Number(negotiableMaxAmount)) : 0)
-    : configuredMaxAmount;
-
-  const activeMinMarginPercent = isMinMarginOverridden
-    ? (negotiableMinPercent !== '' ? Number(negotiableMinPercent) : 0)
-    : configuredMinMargin;
-
-  const activeMaxMarginPercent = isMaxMarginOverridden
-    ? (negotiableMaxPercent !== '' ? Number(negotiableMaxPercent) : 0)
-    : configuredMaxMargin;
-
-  // 1. Fixed Pricing: Default auto-calculation and final price based on selected tab (profitCalcMethod)
-  const autoCalculatedSalePrice = costVal > 0
-    ? (profitCalcMethod === 'FIXED_AMOUNT'
-        ? costVal + activeFixedProfitAmount
-        : Math.round(costVal * (1 + activeFixedMarginPercent / 100)))
-    : 0;
-
-  let finalFixedSalePrice = autoCalculatedSalePrice;
-  if (isSalePriceOverridden && customFixedSalePrice !== '' && Number(customFixedSalePrice) > 0) {
-    finalFixedSalePrice = Math.round(Number(customFixedSalePrice));
-  } else if (costVal > 0) {
-    finalFixedSalePrice = autoCalculatedSalePrice;
-  } else if (customFixedSalePrice !== '' && Number(customFixedSalePrice) > 0) {
-    finalFixedSalePrice = Math.round(Number(customFixedSalePrice));
-  }
-
-  // 2. Negotiable Pricing: Default auto-calculations based on selected tab (profitCalcMethod)
-  const autoCalculatedMinPrice = costVal > 0
-    ? (profitCalcMethod === 'FIXED_AMOUNT'
-        ? costVal + activeMinProfitAmount
-        : Math.round(costVal * (1 + activeMinMarginPercent / 100)))
-    : 0;
-
-  const autoCalculatedMaxPrice = costVal > 0
-    ? (profitCalcMethod === 'FIXED_AMOUNT'
-        ? costVal + activeMaxProfitAmount
-        : Math.round(costVal * (1 + activeMaxMarginPercent / 100)))
-    : 0;
-
-  let finalNegotiableMinPrice = autoCalculatedMinPrice;
-  if (isMinPriceOverridden && negotiableMinPrice !== '' && Number(negotiableMinPrice) > 0) {
-    finalNegotiableMinPrice = Math.round(Number(negotiableMinPrice));
-  } else if (costVal > 0) {
-    finalNegotiableMinPrice = autoCalculatedMinPrice;
-  } else if (negotiableMinPrice !== '' && Number(negotiableMinPrice) > 0) {
-    finalNegotiableMinPrice = Math.round(Number(negotiableMinPrice));
-  }
-
-  let finalNegotiableMaxPrice = autoCalculatedMaxPrice;
-  if (isMaxPriceOverridden && negotiableMaxPrice !== '' && Number(negotiableMaxPrice) > 0) {
-    finalNegotiableMaxPrice = Math.round(Number(negotiableMaxPrice));
-  } else if (costVal > 0) {
-    finalNegotiableMaxPrice = autoCalculatedMaxPrice;
-  } else if (negotiableMaxPrice !== '' && Number(negotiableMaxPrice) > 0) {
-    finalNegotiableMaxPrice = Math.round(Number(negotiableMaxPrice));
-  }
-
-  // Switch between Fixed Amount and Profit Margin % calculation tabs
-  const handleProfitCalcMethodChange = (method: 'FIXED_AMOUNT' | 'PROFIT_MARGIN') => {
-    setProfitCalcMethod(method);
-    setIsSalePriceOverridden(false);
-    setIsMinPriceOverridden(false);
-    setIsMaxPriceOverridden(false);
-    if (costVal > 0) {
-      if (pricingPolicy === 'FIXED') {
-        if (method === 'FIXED_AMOUNT') {
-          setCustomFixedSalePrice(costVal + activeFixedProfitAmount);
-        } else {
-          const profit = Math.round(costVal * (activeFixedMarginPercent / 100));
-          setCustomFixedSalePrice(costVal + profit);
-        }
-      } else {
-        if (method === 'FIXED_AMOUNT') {
-          setNegotiableMinPrice(costVal + activeMinProfitAmount);
-          setNegotiableMaxPrice(costVal + activeMaxProfitAmount);
-        } else {
-          const minProfit = Math.round(costVal * (activeMinMarginPercent / 100));
-          const maxProfit = Math.round(costVal * (activeMaxMarginPercent / 100));
-          setNegotiableMinPrice(costVal + minProfit);
-          setNegotiableMaxPrice(costVal + maxProfit);
-        }
-      }
-    }
-  };
-
-  // Margin % input handler (user override in Profit Margin % tab)
-  const handleMarginPercentChange = (val: string) => {
-    setIsFixedMarginOverridden(true);
-    setIsSalePriceOverridden(false);
-    if (val === '') {
-      setFixedMarginPercent('');
-      return;
-    }
-    const pct = Math.max(0, Math.round(parseFloat(val) || 0));
-    setFixedMarginPercent(pct);
-    if (costVal > 0) {
-      const profit = Math.round(costVal * (pct / 100));
-      setCustomFixedSalePrice(costVal + profit);
-    }
-  };
-
-  // Fixed profit amount input handler (user override in Fixed Amount tab)
-  const handleProfitAmountChange = (val: string) => {
-    setIsFixedAmountOverridden(true);
-    setIsSalePriceOverridden(false);
-    if (val === '') {
-      setFixedProfitAmount('');
-      return;
-    }
-    const cleaned = val.replace(/[^0-9]/g, '');
-    const amt = cleaned === '' ? 0 : parseInt(cleaned, 10);
-    setFixedProfitAmount(amt);
-    if (costVal > 0) {
-      setCustomFixedSalePrice(costVal + amt);
-    }
-  };
-
-  // Final sale price direct override handler
-  const handleSalePriceChange = (val: string) => {
-    if (val === '') {
-      setIsSalePriceOverridden(false);
-      setCustomFixedSalePrice('');
-      return;
-    }
-    setIsSalePriceOverridden(true);
-    const cleaned = val.replace(/[^0-9]/g, '');
-    const sp = cleaned === '' ? 0 : parseInt(cleaned, 10);
-    setCustomFixedSalePrice(sp);
-    if (costVal > 0) {
-      const profit = Math.max(0, sp - costVal);
-      if (profitCalcMethod === 'FIXED_AMOUNT') {
-        setIsFixedAmountOverridden(true);
-        setFixedProfitAmount(profit);
-      } else {
-        setIsFixedMarginOverridden(true);
-        setFixedMarginPercent(Math.round((profit / costVal) * 100));
-      }
-    }
-  };
-
-  // Negotiable Floor Margin % handler
-  const handleNegotiableMinPercentChange = (val: string) => {
-    setIsMinMarginOverridden(true);
-    setIsMinPriceOverridden(false);
-    if (val === '') {
-      setNegotiableMinPercent('');
-      return;
-    }
-    const pct = Math.max(0, Math.round(parseFloat(val) || 0));
-    setNegotiableMinPercent(pct);
-    if (costVal > 0) {
-      const profit = Math.round(costVal * (pct / 100));
-      setNegotiableMinPrice(costVal + profit);
-    }
-  };
-
-  // Negotiable Floor Fixed Profit Amount handler
-  const handleNegotiableMinAmountChange = (val: string) => {
-    setIsMinAmountOverridden(true);
-    setIsMinPriceOverridden(false);
-    if (val === '') {
-      setNegotiableMinAmount('');
-      return;
-    }
-    const cleaned = val.replace(/[^0-9]/g, '');
-    const amt = cleaned === '' ? 0 : parseInt(cleaned, 10);
-    setNegotiableMinAmount(amt);
-    if (costVal > 0) {
-      setNegotiableMinPrice(costVal + amt);
-    }
-  };
-
-  // Negotiable Floor Price direct override handler
-  const handleNegotiableMinPriceChange = (val: string) => {
-    if (val === '') {
-      setIsMinPriceOverridden(false);
-      setNegotiableMinPrice('');
-      return;
-    }
-    setIsMinPriceOverridden(true);
-    const cleaned = val.replace(/[^0-9]/g, '');
-    const sp = cleaned === '' ? 0 : parseInt(cleaned, 10);
-    setNegotiableMinPrice(sp);
-    if (costVal > 0) {
-      const profit = Math.max(0, sp - costVal);
-      if (profitCalcMethod === 'FIXED_AMOUNT') {
-        setIsMinAmountOverridden(true);
-        setNegotiableMinAmount(profit);
-      } else {
-        setIsMinMarginOverridden(true);
-        setNegotiableMinPercent(Math.round((profit / costVal) * 100));
-      }
-    }
-  };
-
-  // Negotiable Tag Max Margin % handler
-  const handleNegotiableMaxPercentChange = (val: string) => {
-    setIsMaxMarginOverridden(true);
-    setIsMaxPriceOverridden(false);
-    if (val === '') {
-      setNegotiableMaxPercent('');
-      return;
-    }
-    const pct = Math.max(0, Math.round(parseFloat(val) || 0));
-    setNegotiableMaxPercent(pct);
-    if (costVal > 0) {
-      const profit = Math.round(costVal * (pct / 100));
-      setNegotiableMaxPrice(costVal + profit);
-    }
-  };
-
-  // Negotiable Tag Max Fixed Profit Amount handler
-  const handleNegotiableMaxAmountChange = (val: string) => {
-    setIsMaxAmountOverridden(true);
-    setIsMaxPriceOverridden(false);
-    if (val === '') {
-      setNegotiableMaxAmount('');
-      return;
-    }
-    const cleaned = val.replace(/[^0-9]/g, '');
-    const amt = cleaned === '' ? 0 : parseInt(cleaned, 10);
-    setNegotiableMaxAmount(amt);
-    if (costVal > 0) {
-      setNegotiableMaxPrice(costVal + amt);
-    }
-  };
-
-  // Negotiable Tag Max Price direct override handler
-  const handleNegotiableMaxPriceChange = (val: string) => {
-    if (val === '') {
-      setIsMaxPriceOverridden(false);
-      setNegotiableMaxPrice('');
-      return;
-    }
-    setIsMaxPriceOverridden(true);
-    const cleaned = val.replace(/[^0-9]/g, '');
-    const sp = cleaned === '' ? 0 : parseInt(cleaned, 10);
-    setNegotiableMaxPrice(sp);
-    if (costVal > 0) {
-      const profit = Math.max(0, sp - costVal);
-      if (profitCalcMethod === 'FIXED_AMOUNT') {
-        setIsMaxAmountOverridden(true);
-        setNegotiableMaxAmount(profit);
-      } else {
-        setIsMaxMarginOverridden(true);
-        setNegotiableMaxPercent(Math.round((profit / costVal) * 100));
-      }
-    }
-  };
-
-  // Cost price change handlers: uses Settings default unless user overridden in this modal
-  const handleCostPriceChange = (val: string) => {
-    const cleaned = cleanStockPriceInput(val);
+  const handleIntegerPriceInput = (
+    rawVal: string,
+    setter: React.Dispatch<React.SetStateAction<number | ''>>,
+    fieldKey: string
+  ) => {
+    setErrorMessage(null);
+    setPricingFieldErrors((prev) => {
+      if (!prev[fieldKey]) return prev;
+      const next = { ...prev };
+      delete next[fieldKey];
+      return next;
+    });
+    const cleaned = cleanStockPriceInput(rawVal);
     if (cleaned === '') {
-      setCostPrice('');
-      if (!product) {
-        setCustomFixedSalePrice('');
-        setNegotiableMinPrice('');
-        setNegotiableMaxPrice('');
-      }
+      setter('');
       return;
     }
     const num = parseInt(cleaned, 10);
-    if (!isNaN(num)) {
-      setCostPrice(num);
-      setIsSalePriceOverridden(false);
-      setIsMinPriceOverridden(false);
-      setIsMaxPriceOverridden(false);
-      if (pricingPolicy === 'FIXED') {
-        if (profitCalcMethod === 'FIXED_AMOUNT') {
-          setCustomFixedSalePrice(num + activeFixedProfitAmount);
-        } else {
-          const profit = Math.round(num * (activeFixedMarginPercent / 100));
-          setCustomFixedSalePrice(num + profit);
-        }
-      } else {
-        // For a product in Negotiable mode
-        if (profitCalcMethod === 'FIXED_AMOUNT') {
-          setNegotiableMinPrice(num + activeMinProfitAmount);
-          setNegotiableMaxPrice(num + activeMaxProfitAmount);
-        } else {
-          const minProfit = Math.round(num * (activeMinMarginPercent / 100));
-          const maxProfit = Math.round(num * (activeMaxMarginPercent / 100));
-          setNegotiableMinPrice(num + minProfit);
-          setNegotiableMaxPrice(num + maxProfit);
-        }
-      }
-    }
-  };
-
-  const handleCostPriceBlur = (val: string) => {
-    const cleaned = cleanStockPriceInput(val);
-    if (cleaned === '') {
-      setCostPrice('');
-    } else {
-      const num = parseInt(cleaned, 10);
-      setCostPrice(!isNaN(num) ? num : '');
-    }
-  };
-
-  // Recalculate Default Prices explicitly from company margin settings using active tab method
-  const handleRecalculateDefaults = () => {
-    setIsFixedAmountOverridden(false);
-    setIsFixedMarginOverridden(false);
-    setIsMinAmountOverridden(false);
-    setIsMaxAmountOverridden(false);
-    setIsMinMarginOverridden(false);
-    setIsMaxMarginOverridden(false);
-    setIsSalePriceOverridden(false);
-    setIsMinPriceOverridden(false);
-    setIsMaxPriceOverridden(false);
-
-    setFixedProfitAmount(configuredFixedAmount);
-    setFixedMarginPercent(configuredFixedMargin);
-    setNegotiableMinAmount(configuredMinAmount);
-    setNegotiableMaxAmount(configuredMaxAmount);
-    setNegotiableMinPercent(configuredMinMargin);
-    setNegotiableMaxPercent(configuredMaxMargin);
-
-    if (costVal <= 0) {
-      setRecalcNotice(`Reset to Settings defaults (${profitCalcMethod === 'FIXED_AMOUNT' ? `+${currencySymbol} ${configuredFixedAmount}` : `+${configuredFixedMargin}%`}). Enter a Cost Price to calculate Final Sale Price.`);
-      setTimeout(() => setRecalcNotice(null), 3500);
-      return;
-    }
-    if (pricingPolicy === 'FIXED') {
-      if (profitCalcMethod === 'FIXED_AMOUNT') {
-        setCustomFixedSalePrice(costVal + configuredFixedAmount);
-        setRecalcNotice(`Recalculated from Settings (Fixed Amount): Cost ${currencySymbol} ${costVal} + ${currencySymbol} ${configuredFixedAmount} -> Sale Price ${currencySymbol} ${costVal + configuredFixedAmount}.`);
-      } else {
-        const profit = Math.round(costVal * (configuredFixedMargin / 100));
-        setCustomFixedSalePrice(costVal + profit);
-        setRecalcNotice(`Recalculated from Settings (Profit Margin %): Cost ${currencySymbol} ${costVal} + ${configuredFixedMargin}% (+${currencySymbol} ${profit}) -> Sale Price ${currencySymbol} ${costVal + profit}.`);
-      }
-    } else {
-      if (profitCalcMethod === 'FIXED_AMOUNT') {
-        setNegotiableMinPrice(costVal + configuredMinAmount);
-        setNegotiableMaxPrice(costVal + configuredMaxAmount);
-        setRecalcNotice(`Recalculated from Settings (Fixed Amount): Floor ${currencySymbol} ${costVal + configuredMinAmount} - Tag MRP ${currencySymbol} ${costVal + configuredMaxAmount}.`);
-      } else {
-        const minProfit = Math.round(costVal * (configuredMinMargin / 100));
-        const maxProfit = Math.round(costVal * (configuredMaxMargin / 100));
-        setNegotiableMinPrice(costVal + minProfit);
-        setNegotiableMaxPrice(costVal + maxProfit);
-        setRecalcNotice(`Recalculated from Settings (Profit Margin %): Floor ${currencySymbol} ${costVal + minProfit} - Tag MRP ${currencySymbol} ${costVal + maxProfit}.`);
-      }
-    }
-    playAudioFeedback.saleSuccess();
-    setTimeout(() => setRecalcNotice(null), 4000);
+    setter(!isNaN(num) ? num : '');
   };
 
   // Derived current brand and category details
@@ -738,7 +246,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       !forceResetArticle && isArticleManuallyEdited && article.trim()
         ? article.trim().toUpperCase()
         : generateSuggestedArticle(catPfx, pId);
-    const designedSku = generateSku(brandPfx, designedArticle, '42');
+    const designedSku = generateSku(brandPfx, designedArticle, pId);
 
     setArticle(designedArticle);
     setSku(designedSku);
@@ -991,25 +499,51 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
   const validateStep2 = (): boolean => {
     setErrorMessage(null);
-    if (costPrice === '' || Number(costPrice) < 0) {
-      setErrorMessage('Please enter a valid Cost Price (0 or greater).');
+    setPricingFieldErrors({});
+
+    if (costPrice === '') {
+      const msg = 'Cost Price is required.';
+      setPricingFieldErrors({ costPrice: msg });
+      setErrorMessage(msg);
       return false;
     }
-    if (pricingPolicy === 'FIXED') {
-      if (finalFixedSalePrice <= 0) {
-        setErrorMessage('Final Sale Price must be greater than 0.');
-        return false;
+
+    if (pricingPolicy === 'FIXED' && sellingPrice === '') {
+      const msg = 'Price is required for Fixed Price policy.';
+      setPricingFieldErrors({ sellingPrice: msg });
+      setErrorMessage(msg);
+      return false;
+    }
+
+    if (pricingPolicy === 'NEGOTIABLE') {
+      const missingErrors: Record<string, string> = {};
+      if (minPrice === '') {
+        missingErrors.minPrice = 'Minimum Selling Price is required for Negotiable Price policy.';
       }
-    } else {
-      if (finalNegotiableMinPrice <= 0) {
-        setErrorMessage('Minimum Sale Price must be greater than 0.');
-        return false;
+      if (maxPrice === '') {
+        missingErrors.maxPrice = 'Maximum Selling Price is required for Negotiable Price policy.';
       }
-      if (finalNegotiableMaxPrice < finalNegotiableMinPrice) {
-        setErrorMessage('Maximum Sale Price cannot be less than Minimum Sale Price.');
+      if (Object.keys(missingErrors).length > 0) {
+        setPricingFieldErrors(missingErrors);
+        setErrorMessage(Object.values(missingErrors)[0]);
         return false;
       }
     }
+
+    const validation = validateAndNormalizeProductPricing({
+      pricingPolicy,
+      costPrice: Number(costPrice),
+      sellingPrice: pricingPolicy === 'FIXED' ? Number(sellingPrice) : undefined,
+      minPrice: pricingPolicy === 'NEGOTIABLE' ? Number(minPrice) : undefined,
+      maxPrice: pricingPolicy === 'NEGOTIABLE' ? Number(maxPrice) : undefined,
+    });
+
+    if (!validation.success) {
+      setPricingFieldErrors(validation.fieldErrors || {});
+      setErrorMessage(validation.error || 'Please fix the pricing validation errors.');
+      return false;
+    }
+
     return true;
   };
 
@@ -1066,6 +600,21 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       return;
     }
 
+    const validation = validateAndNormalizeProductPricing({
+      pricingPolicy,
+      costPrice: Number(costPrice),
+      sellingPrice: pricingPolicy === 'FIXED' ? Number(sellingPrice) : undefined,
+      minPrice: pricingPolicy === 'NEGOTIABLE' ? Number(minPrice) : undefined,
+      maxPrice: pricingPolicy === 'NEGOTIABLE' ? Number(maxPrice) : undefined,
+    });
+
+    if (!validation.success || !validation.data) {
+      setCurrentStep(2);
+      setPricingFieldErrors(validation.fieldErrors || {});
+      setErrorMessage(validation.error || 'Pricing validation failed.');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -1089,18 +638,11 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       }
 
       const finalBarcodeToSave = barcode.trim();
-      const costNum = Math.max(0, Math.round(Number(costPrice)));
+      const normalizedPricing = validation.data;
 
-      const finalSavedSalePrice = pricingPolicy === 'FIXED'
-        ? finalFixedSalePrice
-        : finalNegotiableMaxPrice;
-      const finalSavedMinPrice = pricingPolicy === 'NEGOTIABLE'
-        ? finalNegotiableMinPrice
-        : finalFixedSalePrice;
-      const finalSavedMaxPrice = pricingPolicy === 'NEGOTIABLE'
-        ? finalNegotiableMaxPrice
-        : finalFixedSalePrice;
-
+      // Consolidated Product Pricing Payload:
+      // For FIXED: sellingPrice = minPrice = maxPrice
+      // For NEGOTIABLE: costPrice, minPrice, maxPrice (and sellingPrice = maxPrice)
       const payload = {
         name: productName.trim() || cleanArticle,
         brand: finalBrand,
@@ -1110,25 +652,11 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         barcode: finalBarcodeToSave,
         primaryImageUrl: primaryImageUrl.trim(),
         description: description.trim(),
-        costPrice: costNum,
-        marginType: pricingPolicy,
-        profitCalculationMethod: profitCalcMethod,
-        profit_calculation_method: profitCalcMethod,
-        profitMargin: pricingPolicy === 'FIXED'
-          ? activeFixedMarginPercent
-          : activeMaxMarginPercent,
-        profitAmount: pricingPolicy === 'FIXED'
-          ? activeFixedProfitAmount
-          : activeMaxProfitAmount,
-        customMinMargin: pricingPolicy === 'NEGOTIABLE'
-          ? activeMinMarginPercent
-          : null,
-        customMaxMargin: pricingPolicy === 'NEGOTIABLE'
-          ? activeMaxMarginPercent
-          : null,
-        salePrice: finalSavedSalePrice,
-        minSalePrice: finalSavedMinPrice,
-        maxSalePrice: finalSavedMaxPrice,
+        pricingPolicy: normalizedPricing.pricingPolicy,
+        costPrice: normalizedPricing.costPrice,
+        sellingPrice: normalizedPricing.sellingPrice,
+        minPrice: normalizedPricing.minPrice,
+        maxPrice: normalizedPricing.maxPrice,
         totalStock: totalStock === '' ? 0 : Math.round(Number(totalStock)),
         lowStockLimit: product?.lowStockLimit !== undefined ? product.lowStockLimit : 5,
       };
@@ -1156,14 +684,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     }
   };
 
-  // Pricing Margin Calculations (Without decimals)
-  const effectiveMaxSale = pricingPolicy === 'FIXED' ? finalFixedSalePrice : finalNegotiableMaxPrice;
-  const effectiveMinSale = pricingPolicy === 'FIXED' ? finalFixedSalePrice : finalNegotiableMinPrice;
-
-  const grossProfit = effectiveMaxSale - costVal;
-  const markupPercent = costVal > 0 ? String(Math.round((grossProfit / costVal) * 100)) : '0';
-  const marginPercent = effectiveMaxSale > 0 ? String(Math.round((grossProfit / effectiveMaxSale) * 100)) : '0';
-  const isLoss = effectiveMaxSale > 0 && costVal > 0 && effectiveMaxSale < costVal;
+  // Effective prices for review & label preview
+  const effectiveMaxSale = pricingPolicy === 'FIXED' ? fixedPriceVal : negotiableMaxVal;
+  const effectiveMinSale = pricingPolicy === 'FIXED' ? fixedPriceVal : negotiableMinVal;
 
   return (
     <motion.div
@@ -1592,251 +1115,86 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           {/* ========================================================= */}
           {currentStep === 2 && (
             <div className="space-y-4 animate-in fade-in duration-150">
-              {/* Main Pricing Policy & Specifications Card */}
-              <div className="bg-white dark:bg-gradient-to-b dark:from-[#131B2E]/90 dark:to-[#0A0E1A]/80 p-5 rounded-2xl border border-gray-200 dark:border-[#1A263D] shadow-xs space-y-4">
+              <div className="bg-white dark:bg-gradient-to-b dark:from-[#131B2E]/90 dark:to-[#0A0E1A]/80 p-5 rounded-2xl border border-gray-200 dark:border-[#1A263D] shadow-xs space-y-5">
                 <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-100 dark:border-slate-800 gap-2">
                   <div className="flex items-center gap-2">
                     <DollarSign className="w-4 h-4 text-indigo-600 dark:text-blue-400" />
-                    <h4 className="font-bold text-gray-900 dark:text-white text-sm">Product Pricing</h4>
-                    <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${
-                      pricingPolicy === 'FIXED'
-                        ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60'
-                        : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
-                    }`}>
-                      {pricingPolicy === 'FIXED' ? 'Fixed Price Policy (from Settings)' : 'Negotiable Price Policy (from Settings)'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleRecalculateDefaults}
-                      className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg border border-slate-200 dark:border-slate-700 transition flex items-center gap-1 cursor-pointer"
-                      title="Recalculate prices from global store margin settings"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Recalculate from Settings</span>
-                    </button>
-                    <span className="text-[11px] text-gray-400 dark:text-slate-500 font-medium">Step 2 of 3</span>
-                  </div>
-                </div>
-
-                {recalcNotice && (
-                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/80 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between">
-                    <span>{recalcNotice}</span>
-                    <button type="button" onClick={() => setRecalcNotice(null)} className="text-emerald-600 font-bold ml-2 cursor-pointer">×</button>
-                  </div>
-                )}
-
-                {/* Cost Price Input (Integer) */}
-                <div className="p-4 bg-slate-50 dark:bg-[#070B14] border border-gray-200 dark:border-slate-800 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block font-bold text-gray-900 dark:text-slate-200 text-xs">
-                      Cost Price (Whole Integer) <span className="text-red-500">*</span>
-                    </label>
-                    <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
-                      Standard whole number (no decimals)
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 dark:text-slate-400">
-                    Procurement cost per shoe pair paid to supplier or factory. Initial selling prices are calculated from this cost price.
-                  </p>
-                  <div className="relative max-w-md">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-slate-400 font-mono font-bold text-base">
-                      {currencySymbol}
-                    </span>
-                    <input
-                      id="product-cost-price-input"
-                      type="number"
-                      min="0"
-                      step="1"
-                      required
-                      autoFocus
-                      placeholder="0"
-                      value={costPrice}
-                      onChange={(e) => handleCostPriceChange(e.target.value)}
-                      onBlur={(e) => handleCostPriceBlur(e.target.value)}
-                      className="w-full pl-12 pr-4 py-3 bg-white dark:bg-[#0B101D] border-2 border-indigo-200 dark:border-indigo-800/80 rounded-xl font-mono font-black text-lg text-gray-950 dark:text-white outline-none focus:border-indigo-600 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 shadow-xs"
-                    />
-                  </div>
-                </div>
-
-                {/* 2-TAB SELECTOR: FIXED AMOUNT vs PROFIT MARGIN % */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-gray-800 dark:text-slate-200">
-                      Select Profit Calculation Method
-                    </label>
-                    <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
-                      {profitCalcMethod === 'FIXED_AMOUNT'
-                        ? `Active: Fixed Amount (${currencySymbol})`
-                        : 'Active: Profit Margin (%)'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-[#0A0F1E] rounded-xl border border-slate-200 dark:border-slate-800">
-                    <button
-                      type="button"
-                      id="product-calc-tab-fixed-amount"
-                      onClick={() => handleProfitCalcMethodChange('FIXED_AMOUNT')}
-                      className={`flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                        profitCalcMethod === 'FIXED_AMOUNT'
-                          ? 'bg-white dark:bg-purple-600 text-purple-700 dark:text-white shadow-xs border border-purple-200 dark:border-purple-500'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent'
+                    <h4 className="font-bold text-gray-900 dark:text-white text-sm">2. Product Pricing</h4>
+                    <span
+                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${
+                        pricingPolicy === 'FIXED'
+                          ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60'
+                          : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
                       }`}
                     >
-                      <DollarSign className="w-3.5 h-3.5" />
-                      <span>Fixed Amount ({currencySymbol})</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      id="product-calc-tab-profit-margin"
-                      onClick={() => handleProfitCalcMethodChange('PROFIT_MARGIN')}
-                      className={`flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                        profitCalcMethod === 'PROFIT_MARGIN'
-                          ? 'bg-white dark:bg-purple-600 text-purple-700 dark:text-white shadow-xs border border-purple-200 dark:border-purple-500'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent'
-                      }`}
-                    >
-                      <Percent className="w-3.5 h-3.5" />
-                      <span>Profit Margin (%)</span>
-                    </button>
+                      {pricingPolicy === 'FIXED' ? 'Fixed Price Policy (Locked)' : 'Negotiable Price Policy (Locked)'}
+                    </span>
                   </div>
+                  <span className="text-[11px] text-gray-400 dark:text-slate-500 font-medium">Step 2 of 3</span>
                 </div>
 
-                {/* FIXED PRICING UI: Single active method tab (Fixed Amount OR Profit Margin %) */}
-                {pricingPolicy === 'FIXED' && (
-                  <div className="p-4 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/60 rounded-2xl space-y-4">
-                    <div className="flex flex-wrap items-center justify-between border-b border-purple-100 dark:border-purple-900/60 pb-2 gap-2">
-                      <span className="text-xs font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
-                        <TrendingUp className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                        <span>
-                          {profitCalcMethod === 'FIXED_AMOUNT'
-                            ? `Fixed Amount Profit Calculation (${currencySymbol})`
-                            : 'Profit Margin (%) Calculation'}
-                        </span>
-                      </span>
-                      <span className="text-[11px] text-purple-700 dark:text-purple-400 font-mono">
-                        {profitCalcMethod === 'FIXED_AMOUNT'
-                          ? `Settings Default: +${currencySymbol} ${configuredFixedAmount}`
-                          : `Settings Default: +${configuredFixedMargin}%`}
-                      </span>
-                    </div>
-
-                    {/* 2-Column Linked Grid: Selected Calculation Input + Final Sale Price */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {profitCalcMethod === 'FIXED_AMOUNT' ? (
-                        /* TAB 1: Default Fixed Profit Amount (Rs.) * */
-                        <div className="p-3 bg-white dark:bg-[#070B14] rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="text-xs font-bold text-gray-800 dark:text-slate-200">
-                              Default Fixed Profit Amount ({currencySymbol}) <span className="text-rose-500 font-bold">*</span>
-                            </label>
-                            <div className="flex items-center gap-1.5">
-                              {isFixedAmountOverridden && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsFixedAmountOverridden(false);
-                                    setIsSalePriceOverridden(false);
-                                    setFixedProfitAmount(configuredFixedAmount);
-                                    if (costVal > 0) {
-                                      setCustomFixedSalePrice(costVal + configuredFixedAmount);
-                                    }
-                                  }}
-                                  className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                                  title="Reset to default Fixed Profit Amount from Settings"
-                                >
-                                  Use Settings ({currencySymbol} {configuredFixedAmount})
-                                </button>
-                              )}
-                              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-mono font-bold">
-                                {isFixedAmountOverridden ? 'Override' : 'From Settings'}: +{currencySymbol} {activeFixedProfitAmount}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-gray-500">
-                              {currencySymbol}
-                            </span>
-                            <input
-                              id="product-fixed-amount-input"
-                              type="number"
-                              min="0"
-                              step="1"
-                              placeholder={String(configuredFixedAmount)}
-                              value={isFixedAmountOverridden ? fixedProfitAmount : configuredFixedAmount}
-                              onChange={(e) => handleProfitAmountChange(e.target.value)}
-                              className="w-full pl-10 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-lg font-mono font-bold text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-400"
-                            />
-                          </div>
-                          <p className="text-[10px] text-gray-500 dark:text-slate-400">
-                            Automatically taken from Settings (+{currencySymbol} {configuredFixedAmount}) unless overridden here
-                          </p>
-                        </div>
-                      ) : (
-                        /* TAB 2: Default Profit Margin (%) * */
-                        <div className="p-3 bg-white dark:bg-[#070B14] rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="text-xs font-bold text-gray-800 dark:text-slate-200">
-                              Default Profit Margin (%) <span className="text-rose-500 font-bold">*</span>
-                            </label>
-                            <div className="flex items-center gap-1.5">
-                              {isFixedMarginOverridden && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsFixedMarginOverridden(false);
-                                    setIsSalePriceOverridden(false);
-                                    setFixedMarginPercent(configuredFixedMargin);
-                                    if (costVal > 0) {
-                                      setCustomFixedSalePrice(costVal + Math.round(costVal * (configuredFixedMargin / 100)));
-                                    }
-                                  }}
-                                  className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                                  title="Reset to default Profit Margin (%) from Settings"
-                                >
-                                  Use Settings ({configuredFixedMargin}%)
-                                </button>
-                              )}
-                              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-mono font-bold">
-                                {isFixedMarginOverridden ? 'Override' : 'From Settings'}: Cost + {activeFixedMarginPercent}%
-                              </span>
-                            </div>
-                          </div>
-                          <div className="relative">
-                            <input
-                              id="product-margin-percent-input"
-                              type="number"
-                              min="0"
-                              max="1000"
-                              step="1"
-                              placeholder={String(configuredFixedMargin)}
-                              value={isFixedMarginOverridden ? fixedMarginPercent : configuredFixedMargin}
-                              onChange={(e) => handleMarginPercentChange(e.target.value)}
-                              className="w-full pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-lg font-mono font-bold text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-400"
-                            />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono font-bold text-gray-400">
-                              %
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-gray-500 dark:text-slate-400">
-                            Automatically taken from Settings (+{configuredFixedMargin}%) unless overridden here
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Final Sale Price (Saved to DB & Barcode) */}
-                      <div className="p-3 bg-purple-600/10 dark:bg-purple-900/30 rounded-xl border-2 border-purple-400 dark:border-purple-600 space-y-1.5">
+                {/* ===================================================== */}
+                {/* DYNAMIC FORM: FIXED PRICE POLICY                      */}
+                {/* Renders Cost Price + Single "Price" Input             */}
+                {/* Automatically saves sellingPrice = minPrice = maxPrice*/}
+                {/* ===================================================== */}
+                {pricingPolicy === 'FIXED' ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Cost Price */}
+                      <div className="p-4 bg-slate-50 dark:bg-[#070B14] border border-gray-200 dark:border-slate-800 rounded-2xl space-y-2">
                         <div className="flex items-center justify-between">
-                          <label className="text-xs font-bold text-purple-900 dark:text-purple-200">
-                            Final Sale Price
+                          <label htmlFor="product-cost-price-input" className="block font-bold text-gray-900 dark:text-slate-200 text-xs">
+                            Cost Price <span className="text-red-500">*</span>
                           </label>
-                          <span className="text-[10px] text-purple-700 dark:text-purple-300 font-mono font-bold">
-                            Barcode / POS
+                          <span className="text-[10px] font-mono text-gray-500 dark:text-slate-400">costPrice</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-slate-400">
+                          Unit acquisition cost paid to supplier or factory.
+                        </p>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-slate-400 font-mono font-bold text-base">
+                            {currencySymbol}
+                          </span>
+                          <input
+                            id="product-cost-price-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            required
+                            autoFocus
+                            placeholder="0"
+                            value={costPrice}
+                            onChange={(e) => handleIntegerPriceInput(e.target.value, setCostPrice, 'costPrice')}
+                            className={`w-full pl-12 pr-4 py-3 bg-white dark:bg-[#0B101D] border-2 rounded-xl font-mono font-black text-lg text-gray-950 dark:text-white outline-none transition shadow-xs ${
+                              pricingFieldErrors.costPrice
+                                ? 'border-red-400 dark:border-red-500 focus:border-red-600'
+                                : 'border-indigo-200 dark:border-indigo-800/80 focus:border-indigo-600 dark:focus:border-indigo-400'
+                            }`}
+                          />
+                        </div>
+                        {pricingFieldErrors.costPrice && (
+                          <p className="text-red-600 dark:text-red-400 text-[11px] font-medium mt-1">
+                            {pricingFieldErrors.costPrice}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Single Price Field (sellingPrice = minPrice = maxPrice) */}
+                      <div className="p-4 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/60 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="product-final-sale-price-input" className="block font-bold text-purple-950 dark:text-purple-200 text-xs">
+                            Price <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 font-bold">
+                            sellingPrice = minPrice = maxPrice
                           </span>
                         </div>
+                        <p className="text-[11px] text-purple-800/80 dark:text-purple-300/80">
+                          Fixed retail selling price (must be &ge; Cost Price).
+                        </p>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-purple-700 dark:text-purple-300">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-purple-700 dark:text-purple-300 font-mono font-black text-base">
                             {currencySymbol}
                           </span>
                           <input
@@ -1844,298 +1202,174 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             type="number"
                             min="0"
                             step="1"
-                            placeholder={String(costVal)}
-                            value={customFixedSalePrice !== '' ? customFixedSalePrice : (finalFixedSalePrice > 0 ? finalFixedSalePrice : '')}
-                            onChange={(e) => handleSalePriceChange(e.target.value)}
-                            className="w-full pl-10 pr-3 py-2 bg-white dark:bg-[#070B14] border-2 border-purple-500 dark:border-purple-400 rounded-lg font-mono font-black text-lg text-purple-950 dark:text-purple-100 outline-none focus:ring-2 focus:ring-purple-400 shadow-xs"
+                            required
+                            placeholder={String(costVal || 0)}
+                            value={sellingPrice}
+                            onChange={(e) => handleIntegerPriceInput(e.target.value, setSellingPrice, 'sellingPrice')}
+                            className={`w-full pl-12 pr-4 py-3 bg-white dark:bg-[#070B14] border-2 rounded-xl font-mono font-black text-lg text-purple-950 dark:text-purple-100 outline-none transition shadow-xs ${
+                              pricingFieldErrors.sellingPrice
+                                ? 'border-red-400 dark:border-red-500 focus:border-red-600'
+                                : 'border-purple-400 dark:border-purple-500 focus:border-purple-600 dark:focus:border-purple-400'
+                            }`}
                           />
                         </div>
-                        <p className="text-[10px] text-purple-700 dark:text-purple-300 font-medium font-mono">
-                          sale_price = {finalFixedSalePrice}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Live Calculation Banner Based on Active Tab Only */}
-                    <div className="p-3 bg-white dark:bg-[#070B14] rounded-xl border border-purple-100 dark:border-purple-900/40 flex flex-wrap items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2 text-gray-700 dark:text-slate-300 font-medium">
-                        <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                        {profitCalcMethod === 'FIXED_AMOUNT' ? (
-                          <span>
-                            Fixed Amount Calculation: Cost <strong>{currencySymbol} {costVal}</strong> + Fixed Profit <strong>{currencySymbol} {activeFixedProfitAmount}</strong> ({isFixedAmountOverridden ? 'User Override' : 'From Settings'}) = Final Price: <strong>{currencySymbol} {finalFixedSalePrice}</strong>
-                          </span>
-                        ) : (
-                          <span>
-                            Profit Margin (%) Calculation: Cost <strong>{currencySymbol} {costVal}</strong> + Margin <strong>{activeFixedMarginPercent}%</strong> (+{currencySymbol} {Math.round(costVal * (activeFixedMarginPercent / 100))}) = Final Price: <strong>{currencySymbol} {finalFixedSalePrice}</strong>
-                          </span>
+                        {pricingFieldErrors.sellingPrice && (
+                          <p className="text-red-600 dark:text-red-400 text-[11px] font-medium mt-1">
+                            {pricingFieldErrors.sellingPrice}
+                          </p>
                         )}
                       </div>
                     </div>
-                  </div>
-                )}
 
-                {/* NEGOTIABLE PRICING UI: Single active method tab (Fixed Amount OR Profit Margin %) */}
-                {pricingPolicy === 'NEGOTIABLE' && (
+                    <div className="p-3 bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 text-xs flex items-center gap-2.5">
+                      <Info className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                      <span>
+                        <strong>Fixed Price Rule:</strong> Saving this product automatically sets{' '}
+                        <code className="font-mono font-bold">sellingPrice</code>,{' '}
+                        <code className="font-mono font-bold">minPrice</code>, and{' '}
+                        <code className="font-mono font-bold">maxPrice</code> to{' '}
+                        <strong>
+                          {currencySymbol} {fixedPriceVal}
+                        </strong>{' '}
+                        in the database.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  /* ===================================================== */
+                  /* DYNAMIC FORM: NEGOTIABLE PRICE POLICY                 */
+                  /* Renders 3 Mandatory Fields: Cost, Min, Max Price      */
+                  /* ===================================================== */
                   <div className="space-y-4">
-                    {/* TIER 1: MINIMUM SALE PRICE (POS FLOOR) */}
-                    <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 rounded-2xl space-y-3">
-                      <div className="flex flex-wrap items-center justify-between border-b border-amber-200/70 dark:border-amber-900/60 pb-2 gap-2">
-                        <span className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                          <span>1. Minimum Sale Price (POS Floor Negotiation Limit)</span>
-                        </span>
-                        <span className="text-[11px] text-amber-700 dark:text-amber-400 font-mono">
-                          {profitCalcMethod === 'FIXED_AMOUNT'
-                            ? `Settings Default: +${currencySymbol} ${configuredMinAmount}`
-                            : `Settings Default: +${configuredMinMargin}%`}
-                        </span>
-                      </div>
-
-                      {/* 2-Column Linked Inputs Grid for Floor */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {profitCalcMethod === 'FIXED_AMOUNT' ? (
-                          /* Floor Fixed Profit Amount */
-                          <div className="p-3 bg-white dark:bg-[#070B14] rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <label className="text-xs font-bold text-gray-800 dark:text-slate-200">
-                                Default Min Fixed Profit Amount ({currencySymbol}) <span className="text-rose-500 font-bold">*</span>
-                              </label>
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-bold">
-                                {isMinAmountOverridden ? 'Override' : 'From Settings'}: +{currencySymbol} {activeMinProfitAmount}
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-gray-500">
-                                {currencySymbol}
-                              </span>
-                              <input
-                                id="product-min-fixed-amount-input"
-                                type="number"
-                                min="0"
-                                step="1"
-                                placeholder={String(configuredMinAmount)}
-                                value={isMinAmountOverridden ? negotiableMinAmount : configuredMinAmount}
-                                onChange={(e) => handleNegotiableMinAmountChange(e.target.value)}
-                                className="w-full pl-10 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-400"
-                              />
-                            </div>
-                            <p className="text-[10px] text-gray-500 dark:text-slate-400">
-                              Taken from Settings (+{currencySymbol} {configuredMinAmount}) unless overridden here
-                            </p>
-                          </div>
-                        ) : (
-                          /* Floor Profit Margin (%) */
-                          <div className="p-3 bg-white dark:bg-[#070B14] rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <label className="text-xs font-bold text-gray-800 dark:text-slate-200">
-                                Default Min Profit Margin (%) <span className="text-rose-500 font-bold">*</span>
-                              </label>
-                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-bold">
-                                {isMinMarginOverridden ? 'Override' : 'From Settings'}: Cost + {activeMinMarginPercent}%
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <input
-                                id="product-min-margin-percent-input"
-                                type="number"
-                                min="0"
-                                max="1000"
-                                step="1"
-                                placeholder={String(configuredMinMargin)}
-                                value={isMinMarginOverridden ? negotiableMinPercent : configuredMinMargin}
-                                onChange={(e) => handleNegotiableMinPercentChange(e.target.value)}
-                                className="w-full pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg font-mono font-bold text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-400"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono font-bold text-gray-400">
-                                %
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-gray-500 dark:text-slate-400">
-                              Taken from Settings (+{configuredMinMargin}%) unless overridden here
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Final Minimum Sale Price (POS Floor) */}
-                        <div className="p-3 bg-amber-500/10 dark:bg-amber-900/30 rounded-xl border-2 border-amber-400 dark:border-amber-600 space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-amber-900 dark:text-amber-200">
-                              Minimum Sale Price
-                            </label>
-                            <span className="text-[10px] text-amber-700 dark:text-amber-300 font-mono font-bold">
-                              POS Floor Limit
-                            </span>
-                          </div>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-amber-700 dark:text-amber-300">
-                              {currencySymbol}
-                            </span>
-                            <input
-                              id="product-min-sale-price-input"
-                              type="number"
-                              min="0"
-                              step="1"
-                              placeholder={String(autoCalculatedMinPrice)}
-                              value={negotiableMinPrice !== '' ? negotiableMinPrice : (finalNegotiableMinPrice > 0 ? finalNegotiableMinPrice : '')}
-                              onChange={(e) => handleNegotiableMinPriceChange(e.target.value)}
-                              className="w-full pl-10 pr-3 py-2 bg-white dark:bg-[#070B14] border-2 border-amber-500 dark:border-amber-400 rounded-lg font-mono font-black text-lg text-amber-950 dark:text-amber-100 outline-none focus:ring-2 focus:ring-amber-400 shadow-xs"
-                            />
-                          </div>
-                          <p className="text-[10px] text-amber-700 dark:text-amber-300 font-medium font-mono">
-                            min_sale_price = {finalNegotiableMinPrice}
-                          </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {/* 1. Cost Price */}
+                      <div className="p-4 bg-slate-50 dark:bg-[#070B14] border border-gray-200 dark:border-slate-800 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="product-cost-price-input" className="block font-bold text-gray-900 dark:text-slate-200 text-xs">
+                            Cost Price <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[10px] font-mono text-gray-500 dark:text-slate-400">costPrice</span>
                         </div>
+                        <p className="text-[11px] text-gray-500 dark:text-slate-400">
+                          Unit acquisition cost per pair.
+                        </p>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-slate-400 font-mono font-bold text-base">
+                            {currencySymbol}
+                          </span>
+                          <input
+                            id="product-cost-price-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            required
+                            autoFocus
+                            placeholder="0"
+                            value={costPrice}
+                            onChange={(e) => handleIntegerPriceInput(e.target.value, setCostPrice, 'costPrice')}
+                            className={`w-full pl-11 pr-3 py-3 bg-white dark:bg-[#0B101D] border-2 rounded-xl font-mono font-black text-base text-gray-950 dark:text-white outline-none transition shadow-xs ${
+                              pricingFieldErrors.costPrice
+                                ? 'border-red-400 dark:border-red-500 focus:border-red-600'
+                                : 'border-slate-300 dark:border-slate-700 focus:border-indigo-600 dark:focus:border-indigo-400'
+                            }`}
+                          />
+                        </div>
+                        {pricingFieldErrors.costPrice && (
+                          <p className="text-red-600 dark:text-red-400 text-[11px] font-medium mt-1">
+                            {pricingFieldErrors.costPrice}
+                          </p>
+                        )}
                       </div>
 
-                      {/* Floor Summary Banner Based on Active Tab Only */}
-                      <div className="p-2.5 bg-white dark:bg-[#070B14] rounded-lg border border-amber-100 dark:border-amber-900/40 text-xs font-medium text-amber-900 dark:text-amber-300 flex items-center justify-between">
-                        {profitCalcMethod === 'FIXED_AMOUNT' ? (
-                          <span>
-                            Floor Calculation (Fixed Amount): Cost {currencySymbol} {costVal} + Fixed Profit {currencySymbol} {negotiableMinAmount || 0} &rarr; Min POS Checkout: <strong>{currencySymbol} {finalNegotiableMinPrice}</strong>
+                      {/* 2. Min Selling Price */}
+                      <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="product-min-sale-price-input" className="block font-bold text-amber-950 dark:text-amber-200 text-xs">
+                            Min Selling Price <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[10px] font-mono text-amber-700 dark:text-amber-300 font-bold">minPrice</span>
+                        </div>
+                        <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                          POS floor limit (must be &ge; Cost Price).
+                        </p>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-700 dark:text-amber-300 font-mono font-black text-base">
+                            {currencySymbol}
                           </span>
-                        ) : (
-                          <span>
-                            Floor Calculation (Profit Margin %): Cost {currencySymbol} {costVal} + {negotiableMinPercent || 0}% (+{currencySymbol} {Math.round(costVal * ((Number(negotiableMinPercent) || 0) / 100))}) &rarr; Min POS Checkout: <strong>{currencySymbol} {finalNegotiableMinPrice}</strong>
-                          </span>
+                          <input
+                            id="product-min-sale-price-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            required
+                            placeholder={String(costVal || 0)}
+                            value={minPrice}
+                            onChange={(e) => handleIntegerPriceInput(e.target.value, setMinPrice, 'minPrice')}
+                            className={`w-full pl-11 pr-3 py-3 bg-white dark:bg-[#070B14] border-2 rounded-xl font-mono font-black text-base text-amber-950 dark:text-amber-100 outline-none transition shadow-xs ${
+                              pricingFieldErrors.minPrice
+                                ? 'border-red-400 dark:border-red-500 focus:border-red-600'
+                                : 'border-amber-400 dark:border-amber-500 focus:border-amber-600 dark:focus:border-amber-400'
+                            }`}
+                          />
+                        </div>
+                        {pricingFieldErrors.minPrice && (
+                          <p className="text-red-600 dark:text-red-400 text-[11px] font-medium mt-1">
+                            {pricingFieldErrors.minPrice}
+                          </p>
                         )}
-                        <span className="text-[10px] text-gray-500 dark:text-slate-400">Cashier cannot sell below this</span>
+                      </div>
+
+                      {/* 3. Max Selling Price */}
+                      <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="product-max-sale-price-input" className="block font-bold text-indigo-950 dark:text-indigo-200 text-xs">
+                            Max Selling Price <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[10px] font-mono text-indigo-700 dark:text-indigo-300 font-bold">maxPrice</span>
+                        </div>
+                        <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
+                          Tag price / M.R.P. (must be &ge; Min Price).
+                        </p>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-indigo-700 dark:text-indigo-300 font-mono font-black text-base">
+                            {currencySymbol}
+                          </span>
+                          <input
+                            id="product-max-sale-price-input"
+                            type="number"
+                            min="0"
+                            step="1"
+                            required
+                            placeholder={String(negotiableMinVal || costVal || 0)}
+                            value={maxPrice}
+                            onChange={(e) => handleIntegerPriceInput(e.target.value, setMaxPrice, 'maxPrice')}
+                            className={`w-full pl-11 pr-3 py-3 bg-white dark:bg-[#070B14] border-2 rounded-xl font-mono font-black text-base text-indigo-950 dark:text-indigo-100 outline-none transition shadow-xs ${
+                              pricingFieldErrors.maxPrice
+                                ? 'border-red-400 dark:border-red-500 focus:border-red-600'
+                                : 'border-indigo-400 dark:border-indigo-500 focus:border-indigo-600 dark:focus:border-indigo-400'
+                            }`}
+                          />
+                        </div>
+                        {pricingFieldErrors.maxPrice && (
+                          <p className="text-red-600 dark:text-red-400 text-[11px] font-medium mt-1">
+                            {pricingFieldErrors.maxPrice}
+                          </p>
+                        )}
                       </div>
                     </div>
 
-                    {/* TIER 2: MAXIMUM SALE PRICE (STICKER TAG M.R.P.) */}
-                    <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 rounded-2xl space-y-3">
-                      <div className="flex flex-wrap items-center justify-between border-b border-indigo-200/70 dark:border-indigo-900/60 pb-2 gap-2">
-                        <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                          <span>2. Maximum Sale Price (Sticker Tag M.R.P. &amp; Starting Price)</span>
-                        </span>
-                        <span className="text-[11px] text-indigo-700 dark:text-indigo-400 font-mono">
-                          {profitCalcMethod === 'FIXED_AMOUNT'
-                            ? `Settings Default: +${currencySymbol} ${configuredMaxAmount}`
-                            : `Settings Default: +${configuredMaxMargin}%`}
-                        </span>
-                      </div>
-
-                      {/* 2-Column Linked Inputs Grid for Sticker MRP */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {profitCalcMethod === 'FIXED_AMOUNT' ? (
-                          /* Tag Fixed Profit Amount */
-                          <div className="p-3 bg-white dark:bg-[#070B14] rounded-xl border border-indigo-200 dark:border-indigo-900/50 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <label className="text-xs font-bold text-gray-800 dark:text-slate-200">
-                                Default Max Fixed Profit Amount ({currencySymbol}) <span className="text-rose-500 font-bold">*</span>
-                              </label>
-                              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono font-bold">
-                                {isMaxAmountOverridden ? 'Override' : 'From Settings'}: +{currencySymbol} {activeMaxProfitAmount}
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-gray-500">
-                                {currencySymbol}
-                              </span>
-                              <input
-                                id="product-max-fixed-amount-input"
-                                type="number"
-                                min="0"
-                                step="1"
-                                placeholder={String(configuredMaxAmount)}
-                                value={isMaxAmountOverridden ? negotiableMaxAmount : configuredMaxAmount}
-                                onChange={(e) => handleNegotiableMaxAmountChange(e.target.value)}
-                                className="w-full pl-10 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg font-mono font-bold text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-400"
-                              />
-                            </div>
-                            <p className="text-[10px] text-gray-500 dark:text-slate-400">
-                              Taken from Settings (+{currencySymbol} {configuredMaxAmount}) unless overridden here
-                            </p>
-                          </div>
-                        ) : (
-                          /* Tag Profit Margin (%) */
-                          <div className="p-3 bg-white dark:bg-[#070B14] rounded-xl border border-indigo-200 dark:border-indigo-900/50 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <label className="text-xs font-bold text-gray-800 dark:text-slate-200">
-                                Default Max Profit Margin (%) <span className="text-rose-500 font-bold">*</span>
-                              </label>
-                              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono font-bold">
-                                {isMaxMarginOverridden ? 'Override' : 'From Settings'}: Cost + {activeMaxMarginPercent}%
-                              </span>
-                            </div>
-                            <div className="relative">
-                              <input
-                                id="product-max-margin-percent-input"
-                                type="number"
-                                min="0"
-                                max="1000"
-                                step="1"
-                                placeholder={String(configuredMaxMargin)}
-                                value={isMaxMarginOverridden ? negotiableMaxPercent : configuredMaxMargin}
-                                onChange={(e) => handleNegotiableMaxPercentChange(e.target.value)}
-                                className="w-full pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg font-mono font-bold text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-400"
-                              />
-                              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono font-bold text-gray-400">
-                                %
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-gray-500 dark:text-slate-400">
-                              Taken from Settings (+{configuredMaxMargin}%) unless overridden here
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Final Maximum Sale Price (Sticker MRP) */}
-                        <div className="p-3 bg-indigo-500/10 dark:bg-indigo-900/30 rounded-xl border-2 border-indigo-400 dark:border-indigo-600 space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
-                              Maximum Sale Price
-                            </label>
-                            <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-mono font-bold">
-                              Barcode / Label MRP
-                            </span>
-                          </div>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-black text-indigo-700 dark:text-indigo-300">
-                              {currencySymbol}
-                            </span>
-                            <input
-                              id="product-max-sale-price-input"
-                              type="number"
-                              min="0"
-                              step="1"
-                              placeholder={String(autoCalculatedMaxPrice)}
-                              value={negotiableMaxPrice !== '' ? negotiableMaxPrice : (finalNegotiableMaxPrice > 0 ? finalNegotiableMaxPrice : '')}
-                              onChange={(e) => handleNegotiableMaxPriceChange(e.target.value)}
-                              className="w-full pl-10 pr-3 py-2 bg-white dark:bg-[#070B14] border-2 border-indigo-500 dark:border-indigo-400 rounded-lg font-mono font-black text-lg text-indigo-950 dark:text-indigo-100 outline-none focus:ring-2 focus:ring-indigo-400 shadow-xs"
-                            />
-                          </div>
-                          <p className="text-[10px] text-indigo-700 dark:text-indigo-300 font-medium font-mono">
-                            max_sale_price = {finalNegotiableMaxPrice}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Tag MRP Summary Banner Based on Active Tab Only */}
-                      <div className="p-2.5 bg-white dark:bg-[#070B14] rounded-lg border border-indigo-100 dark:border-indigo-900/40 text-xs font-medium text-indigo-900 dark:text-indigo-300 flex items-center justify-between">
-                        {profitCalcMethod === 'FIXED_AMOUNT' ? (
-                          <span>
-                            Tag MRP Calculation (Fixed Amount): Cost {currencySymbol} {costVal} + Fixed Profit {currencySymbol} {negotiableMaxAmount || 0} &rarr; Sticker Price: <strong>{currencySymbol} {finalNegotiableMaxPrice}</strong>
-                          </span>
-                        ) : (
-                          <span>
-                            Tag MRP Calculation (Profit Margin %): Cost {currencySymbol} {costVal} + {negotiableMaxPercent || 0}% (+{currencySymbol} {Math.round(costVal * ((Number(negotiableMaxPercent) || 0) / 100))}) &rarr; Sticker Price: <strong>{currencySymbol} {finalNegotiableMaxPrice}</strong>
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-500 dark:text-slate-400">Printed on barcode sticker</span>
-                      </div>
+                    <div className="p-3 bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 text-xs flex items-center gap-2.5">
+                      <Info className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <span>
+                        <strong>Negotiable Price Rule:</strong> All three fields (<code className="font-mono font-bold">costPrice</code>,{' '}
+                        <code className="font-mono font-bold">minPrice</code>, and{' '}
+                        <code className="font-mono font-bold">maxPrice</code>) are mandatory, with{' '}
+                        <code className="font-mono font-bold">minPrice &ge; costPrice</code> and{' '}
+                        <code className="font-mono font-bold">maxPrice &ge; minPrice</code>.
+                      </span>
                     </div>
                   </div>
                 )}
-
-                {/* Important Pricing Rule Note */}
-                <div className="p-3 bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-700 dark:text-slate-300 text-xs flex items-center gap-2.5">
-                  <Info className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                  <span>
-                    <strong>Saved Price Guarantee:</strong> The prices configured above are saved permanently to this product ({pricingPolicy === 'FIXED' ? `sale_price: ${finalFixedSalePrice}` : `range: ${finalNegotiableMinPrice} - ${finalNegotiableMaxPrice}`}). Changing global store margins in Settings will <em>not</em> overwrite this product's price unless you explicitly click <strong>Recalculate from Settings</strong>.
-                  </span>
-                </div>
               </div>
             </div>
           )}
@@ -2563,10 +1797,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 sku: sku,
                 barcode: barcode || sku,
                 costPrice: costVal || 0,
-                salePrice: pricingPolicy === 'FIXED' ? finalFixedSalePrice : effectiveMaxSale,
+                sellingPrice: effectiveMaxSale || 0,
+                minPrice: effectiveMinSale || 0,
+                maxPrice: effectiveMaxSale || 0,
+                salePrice: effectiveMaxSale || 0,
                 minSalePrice: effectiveMinSale || 0,
                 maxSalePrice: effectiveMaxSale || 0,
-                marginType: pricingPolicy,
                 brandName: currentBrandName,
                 categoryName: currentCategoryName,
               }
@@ -2588,10 +1824,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 sku: sku,
                 barcode: barcode || sku,
                 costPrice: costVal || 0,
-                salePrice: pricingPolicy === 'FIXED' ? finalFixedSalePrice : effectiveMaxSale,
+                sellingPrice: effectiveMaxSale || 0,
+                minPrice: effectiveMinSale || 0,
+                maxPrice: effectiveMaxSale || 0,
+                salePrice: effectiveMaxSale || 0,
                 minSalePrice: effectiveMinSale || 0,
                 maxSalePrice: effectiveMaxSale || 0,
-                marginType: pricingPolicy,
                 brandName: currentBrandName,
                 categoryName: currentCategoryName,
               }

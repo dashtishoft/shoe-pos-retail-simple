@@ -1,0 +1,73 @@
+// Cleaned-up Prisma Schema for Product and StoreSettings
+// All redundant margin calculation fields (maxProfitMargin, minProfitMargin, fixedAmountMargin,
+// profitCalculationMethod, profitMargin, profitAmount, customMinMargin, customMaxMargin, etc.)
+// have been permanently removed.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PricingPolicy {
+  FIXED
+  NEGOTIABLE
+}
+
+model StoreSettings {
+  id                  Int           @id @default(autoincrement())
+  name                String        @default("Your Shoe Store")
+  logo                String        @default("")
+  address             String        @default("")
+  phone               String        @default("")
+  email               String        @default("")
+  website             String        @default("")
+  strn                String        @default("")
+  taxId               String        @default("") @map("tax_id")
+  taxNumber           String        @default("") @map("tax_number")
+  currency            String        @default("PKR")
+  currencyName        String        @default("Pakistani Rupee") @map("currency_name")
+  currencySymbol      String        @default("Rs.") @map("currency_symbol")
+  invoicePrefix       String        @default("INV-") @map("invoice_prefix")
+  purchasePrefix      String        @default("PUR-") @map("purchase_prefix")
+  barcodePrefix       String        @default("0108923") @map("barcode_prefix")
+  invoiceFooter       String        @default("Thank you for shopping with us!") @map("invoice_footer")
+  lowStockLimit       Int           @default(5) @map("low_stock_limit")
+  pricingPolicy       PricingPolicy @default(FIXED) @map("pricing_mode")
+  pricingPolicyLocked Boolean       @default(false) @map("pricing_policy_locked")
+  isInstalled         Boolean       @default(false) @map("is_installed")
+  updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  @@map("company_settings")
+}
+
+model Product {
+  id              Int      @id @default(autoincrement())
+  brand           String   @default("Local")
+  category        String   @default("Casual Shoes")
+  sku             String   @unique
+  article         String
+  barcode         String   @unique
+  description     String   @default("")
+  primaryImageUrl String   @default("") @map("primary_image_url")
+  costPrice       Decimal  @db.Decimal(12, 2) @map("cost_price")
+  sellingPrice    Int      @map("selling_price")
+  minPrice        Int      @map("min_price")
+  maxPrice        Int      @map("max_price")
+  totalStock      Int      @default(0) @map("total_stock")
+  lowStockLimit   Int      @default(5) @map("low_stock_limit")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@index([barcode], map: "products_barcode_idx")
+  @@index([sku], map: "products_sku_idx")
+  @@index([article], map: "products_article_idx")
+  @@index([active], map: "products_active_idx")
+  @@index([brand], map: "products_brand_idx")
+  @@index([category], map: "products_category_idx")
+  @@map("products")
+}

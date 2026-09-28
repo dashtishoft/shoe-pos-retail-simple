@@ -124,7 +124,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res: Response) => {
              s.balance as supplier_balance,
              p.purchase_number as original_purchase_number,
              (SELECT COUNT(*) FROM purchase_return_items pri WHERE pri.purchase_return_id = pr.id)::int as item_count,
-             (SELECT COALESCE(SUM(pri.carton_quantity), 0) FROM purchase_return_items pri WHERE pri.purchase_return_id = pr.id)::int as total_cartons,
              (SELECT COALESCE(SUM(pri.quantity), 0) FROM purchase_return_items pri WHERE pri.purchase_return_id = pr.id)::int as total_pairs
       FROM purchase_returns pr
       LEFT JOIN users u ON pr.created_by = u.id
@@ -205,7 +204,7 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res: Response) => {
   }
 });
 
-// Process Supplier Purchase Return (Defective Shoe Cartons)
+// Process Supplier Purchase Return (Defective Shoe Pairs)
 // Decrements Inventory, Records 'PURCHASE_RETURN' in Stock Ledger, and Debits Supplier Account
 router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   const {
@@ -216,7 +215,7 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
     returnDate,
     reason,
     notes = '',
-    items = [], // [{ productId, cartonQuantity, pairsPerCarton, quantity, unitPurchasePrice, defectType }]
+    items = [], // [{ productId, quantity, unitPurchasePrice, defectType }]
   } = req.body;
 
   let resolvedSupplierName = (supplierName || '').trim();
@@ -247,7 +246,7 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
   }
 
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'At least one defective shoe item/carton must be specified.' });
+    return res.status(400).json({ error: 'At least one defective shoe item must be specified.' });
   }
 
   let resolvedPurchaseId: number | null = null;
@@ -275,8 +274,6 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
     const validatedItems: Array<{
       productId: number;
       productName: string;
-      cartonQuantity: number;
-      pairsPerCarton: number;
       quantity: number;
       unitPurchasePrice: number;
       subtotal: number;
@@ -287,13 +284,7 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
 
     for (const item of items) {
       const productId = parseInt(item.productId, 10);
-      const cartonQty = Math.max(1, parseInt(item.cartonQuantity ?? 1, 10) || 1);
-      const pairsPerCarton = Math.max(1, parseInt(item.pairsPerCarton ?? 1, 10) || 1);
-      
-      // If quantity is explicitly provided, use it; otherwise compute cartonQuantity * pairsPerCarton
-      const totalPairs = item.quantity !== undefined && item.quantity !== null
-        ? parseInt(item.quantity, 10)
-        : cartonQty * pairsPerCarton;
+      const totalPairs = Math.max(1, parseInt(item.quantity ?? item.totalPairs ?? 1, 10) || 1);
 
       const rawPrice =
         item.unitPurchasePrice !== undefined && item.unitPurchasePrice !== null && item.unitPurchasePrice !== ''
@@ -345,12 +336,10 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       validatedItems.push({
         productId: prod.id,
         productName: prod.article || prod.name,
-        cartonQuantity: cartonQty,
-        pairsPerCarton,
         quantity: totalPairs,
         unitPurchasePrice: unitPrice,
         subtotal,
-        defectType: (item.defectType || 'DEFECTIVE_CARTON').trim(),
+        defectType: (item.defectType || 'MANUFACTURING_DEFECT').trim(),
         prevStock,
         newStock,
       });
@@ -386,14 +375,12 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       // Insert item
       await pgClient.query(
         `INSERT INTO purchase_return_items (
-          purchase_return_id, product_id, carton_quantity, pairs_per_carton,
+          purchase_return_id, product_id,
           quantity, unit_purchase_price, subtotal, defect_type
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6)`,
         [
           returnId,
           v.productId,
-          v.cartonQuantity,
-          v.pairsPerCarton,
           v.quantity,
           v.unitPurchasePrice,
           v.subtotal,
@@ -413,7 +400,7 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
           v.newStock,
           returnNumber,
           req.user!.id,
-          `Supplier Return (Debit Note) to ${resolvedSupplierName}: ${v.cartonQuantity} carton(s) [${v.quantity} pairs] - ${v.defectType} (${reason.trim()})`,
+          `Supplier Return (Debit Note) to ${resolvedSupplierName}: ${v.quantity} pair(s) - ${v.defectType} (${reason.trim()})`,
         ]
       );
     }

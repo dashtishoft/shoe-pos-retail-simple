@@ -11,12 +11,18 @@ export interface User {
   updatedAt: string;
 }
 
+export type PricingPolicy = 'FIXED' | 'NEGOTIABLE';
+
 export interface CompanySettings {
   id: number;
   name: string;
   companyName?: string;
   company_name?: string;
   logo: string;
+  showReceiptLogo?: boolean;
+  show_receipt_logo?: boolean;
+  receiptLogo?: string;
+  receipt_logo?: string;
   address: string;
   companyAddress?: string;
   company_address?: string;
@@ -45,20 +51,14 @@ export interface CompanySettings {
   invoiceFooter: string;
   invoice_footer?: string;
   lowStockLimit: number;
-  pricingMode?: 'FIXED' | 'NEGOTIABLE';
-  pricing_mode?: 'FIXED' | 'NEGOTIABLE';
-  fixedProfitMargin?: number;
-  fixed_profit_margin?: number;
-  fixedProfitAmount?: number;
-  fixed_profit_amount?: number;
-  minProfitMargin?: number;
-  min_profit_margin?: number;
-  minProfitAmount?: number;
-  min_profit_amount?: number;
-  maxProfitMargin?: number;
-  max_profit_margin?: number;
-  maxProfitAmount?: number;
-  max_profit_amount?: number;
+  pricingPolicy?: PricingPolicy;
+  pricing_policy?: PricingPolicy;
+  pricingMode?: PricingPolicy;
+  pricing_mode?: PricingPolicy;
+  pricingPolicyLocked?: boolean;
+  pricing_policy_locked?: boolean;
+  isInstalled?: boolean;
+  is_installed?: boolean;
   updatedAt: string;
 }
 
@@ -73,22 +73,6 @@ export interface Category {
   name: string;
   product_count?: number;
   total_units?: number;
-}
-
-export interface ProductSize {
-  id?: number;
-  productId?: number;
-  sizeLabel: string;
-  quantity: number;
-}
-
-export interface ProductColor {
-  id?: number;
-  productId?: number;
-  colorCode: string; // Strictly 2 digits (01 to 99)
-  colorName: string;
-  barcode?: string;  // 13-digit EAN-13 barcode
-  imageUrl?: string | null;
 }
 
 export type AiConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
@@ -131,18 +115,13 @@ export interface Product {
   description?: string;
   costPrice: number;
   cost_price?: number;
-  marginType?: 'FIXED' | 'NEGOTIABLE';
-  margin_type?: 'FIXED' | 'NEGOTIABLE';
-  profitCalculationMethod?: 'FIXED_AMOUNT' | 'PROFIT_MARGIN';
-  profit_calculation_method?: 'FIXED_AMOUNT' | 'PROFIT_MARGIN';
-  profitMargin?: number | null;
-  profit_margin?: number | null;
-  profitAmount?: number | null;
-  profit_amount?: number | null;
-  customMinMargin?: number | null;
-  custom_min_margin?: number | null;
-  customMaxMargin?: number | null;
-  custom_max_margin?: number | null;
+  sellingPrice: number;
+  selling_price?: number;
+  minPrice: number;
+  min_price?: number;
+  maxPrice: number;
+  max_price?: number;
+  // Backward-compatible aliases for display/cart components
   salePrice?: number | null;
   sale_price?: number | null;
   minSalePrice?: number | null;
@@ -154,8 +133,6 @@ export interface Product {
   active: boolean;
   createdAt: string;
   updatedAt: string;
-  sizes?: ProductSize[];
-  colors?: ProductColor[];
 }
 
 export interface Customer {
@@ -197,22 +174,28 @@ export interface Supplier {
 export interface CartItem {
   productId: number;
   article?: string;
+  name?: string;
   productName?: string;
+  brandName?: string;
+  brandLogo?: string;
   sku: string;
   barcode: string;
-  colorName?: string;
-  colorCode?: string;
-  colorBarcode?: string;
   quantity: number;
   unitPrice: number;
   pricingPolicy?: 'FIXED' | 'NEGOTIABLE';
+  sellingPrice?: number;
+  minPrice?: number;
+  maxPrice?: number;
   salePrice?: number;
   minSalePrice: number;
   maxSalePrice?: number;
   costPrice: number;
   discount: number;
-  total: number;
+  subtotal?: number;
+  total?: number;
   totalStock: number;
+  isPriceOverridden?: boolean;
+  originalPrice?: number;
 }
 
 export interface SaleItem {
@@ -282,8 +265,6 @@ export interface PurchaseReturnItem {
   productName?: string;
   sku?: string;
   barcode?: string;
-  cartonQuantity?: number;
-  pairsPerCarton?: number;
   quantity: number;
   unitPurchasePrice: number;
   subtotal: number;
@@ -385,30 +366,5 @@ export interface ApiToken {
   isActive: boolean;
   createdAt: string;
   lastUsedAt?: string | null;
-}
-
-// Carton Packing Configuration
-export interface CartonPack {
-  id: number;
-  pack_name: string;
-  packName?: string;
-  pairs_per_carton: number;
-  pairsPerCarton?: number;
-  is_default?: boolean;
-  isDefault?: boolean;
-}
-
-// Payload expected when adding an item from the POS item selection module
-export interface PosAddToCartPayload {
-  productId: number;
-  cartonPackId: number;
-  cartons: number;
-  totalPairs: number;
-  totalPrice: number;
-  unitPrice?: number;
-  pricePerCarton?: number;
-  packName?: string;
-  pairsPerCarton?: number;
-  product?: any;
 }
 

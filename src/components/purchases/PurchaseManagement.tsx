@@ -71,7 +71,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
   const [paymentModalPurchaseNumber, setPaymentModalPurchaseNumber] = useState<string | undefined>();
   const [paymentModalDefaultAmount, setPaymentModalDefaultAmount] = useState<number | undefined>();
 
-  // Tab View: Purchases (Inward) vs Supplier Returns & Debit Notes (Defective Cartons)
+  // Tab View: Purchases (Inward) vs Supplier Returns & Debit Notes (Defective Items)
   const [activeTab, setActiveTab] = useState<'purchases' | 'returns'>('purchases');
   const { containerRef: purchaseTabContainerRef } = useScrollActiveTab<HTMLDivElement>(activeTab, {
     padding: 16,
@@ -876,7 +876,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
             className="bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs"
           >
             <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-            <span>Return Defective Cartons</span>
+            <span>Return Defective Items</span>
           </button>
 
           <button
@@ -1220,7 +1220,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                                 setIsReturnModalOpen(true);
                               }}
                               className="p-1.5 rounded-lg bg-slate-50 dark:bg-[#0B1120] hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-slate-200 dark:border-[#1A263D] transition cursor-pointer"
-                              title="Return Defective Cartons to Supplier"
+                              title="Return Defective Items to Supplier"
                             >
                               <AlertTriangle className="w-3.5 h-3.5" />
                             </button>
@@ -1244,7 +1244,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                   <th className="py-3.5 px-4">Debited Supplier</th>
                   <th className="py-3.5 px-4">Original Purchase</th>
                   <th className="py-3.5 px-4">Defect Classification</th>
-                  <th className="py-3.5 px-3 text-center">Cartons / Pairs</th>
+                  <th className="py-3.5 px-3 text-center">Returned Pairs</th>
                   <th className="py-3.5 px-3 text-right">Debit Amount</th>
                   <th className="py-3.5 px-3">Issued By</th>
                   <th className="py-3.5 px-3 text-center">Voucher</th>
@@ -1267,7 +1267,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                         <AlertTriangle className="w-8 h-8 text-rose-400 mx-auto" />
                         <p className="font-bold text-slate-700 dark:text-slate-200">No Supplier Returns Issued Yet</p>
                         <p className="text-slate-500 dark:text-slate-400 text-xs">
-                          When defective shoe cartons arrive or develop manufacturing faults, return them to debit the supplier account and correct store stock.
+                          When defective footwear items arrive or develop manufacturing faults, return them to debit the supplier account and correct store stock.
                         </p>
                         <button
                           type="button"
@@ -1279,7 +1279,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                           className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition shadow-xs mt-2 inline-flex items-center space-x-1.5 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>Return Defective Cartons</span>
+                          <span>Return Defective Items</span>
                         </button>
                       </div>
                     </td>
@@ -1292,7 +1292,6 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                     const dAmt = parseFloat(pr.total_debit_amount || pr.totalDebitAmount || 0);
                     const uName = pr.created_by_name || pr.createdByName || 'Admin';
                     const origPur = pr.original_purchase_number || pr.purchase_number || 'Direct Stock';
-                    const cartons = pr.total_cartons ?? 1;
                     const pairs = pr.total_pairs ?? pr.quantity ?? '-';
 
                     return (
@@ -1322,11 +1321,11 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                           {origPur}
                         </td>
                         <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
-                          <span className="font-medium">{pr.reason || 'Defective Cartons'}</span>
+                          <span className="font-medium">{pr.reason || 'Defective Footwear'}</span>
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className="font-bold text-slate-900 dark:text-white">
-                            {cartons} ctn ({pairs} prs)
+                            {pairs} prs
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-black text-rose-700 dark:text-rose-400">
@@ -3112,7 +3111,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
                 className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
               >
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                <span>Return Defective Cartons</span>
+                <span>Return Defective Items</span>
               </button>
 
               <button
@@ -3145,7 +3144,7 @@ export const PurchaseManagement: React.FC<PurchaseManagementProps> = ({
         />
       )}
 
-      {/* SUPPLIER PURCHASE RETURN MODAL (DEFECTIVE CARTONS) */}
+      {/* SUPPLIER PURCHASE RETURN MODAL (DEFECTIVE ITEMS) */}
       {isReturnModalOpen && (
         <SupplierReturnModal
           isOpen={isReturnModalOpen}

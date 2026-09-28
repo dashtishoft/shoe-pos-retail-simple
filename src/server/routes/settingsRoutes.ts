@@ -16,15 +16,71 @@ async function ensureSettingsPricingColumns() {
       "SELECT (to_regclass('public.company_settings') IS NOT NULL) as has_settings"
     );
     if (!reg.rows[0]?.has_settings) return;
-    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'NEGOTIABLE'");
-    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_margin NUMERIC(5, 2) NOT NULL DEFAULT 30.00");
-    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
-    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
-    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'FIXED'");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_policy_locked BOOLEAN NOT NULL DEFAULT false");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS show_receipt_logo BOOLEAN NOT NULL DEFAULT false");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS receipt_logo TEXT DEFAULT ''");
+    await pgClient.query("UPDATE company_settings SET pricing_policy_locked = true WHERE is_installed = true");
     settingsColumnsVerified = true;
   } catch (err) {
     console.warn('Could not ensure settings pricing columns:', err);
   }
+}
+
+function formatSettingsResponse(s: any) {
+  const mode = String(s.pricing_mode || 'FIXED').toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+  const locked = Boolean(s.pricing_policy_locked || s.is_installed);
+  const receiptLogo = s.receipt_logo || s.logo || '';
+  const showReceiptLogo = Boolean(s.show_receipt_logo);
+  return {
+    id: s.id,
+    name: s.name,
+    companyName: s.name,
+    company_name: s.name,
+    phone: s.phone || '',
+    companyPhone: s.phone || '',
+    company_phone: s.phone || '',
+    email: s.email || '',
+    companyEmail: s.email || '',
+    company_email: s.email || '',
+    address: s.address || '',
+    companyAddress: s.address || '',
+    company_address: s.address || '',
+    strn: s.strn || '',
+    taxId: s.tax_id || s.tax_number || '',
+    tax_id: s.tax_id || s.tax_number || '',
+    taxNumber: s.tax_number || s.tax_id || '',
+    tax_number: s.tax_number || s.tax_id || '',
+    website: s.website || '',
+    logo: s.logo || '',
+    receiptLogo,
+    receipt_logo: receiptLogo,
+    showReceiptLogo,
+    show_receipt_logo: showReceiptLogo,
+    currency: s.currency || 'PKR',
+    currencyName: s.currency_name || 'Pakistani Rupee',
+    currency_name: s.currency_name || 'Pakistani Rupee',
+    currencySymbol: s.currency_symbol || 'Rs.',
+    currency_symbol: s.currency_symbol || 'Rs.',
+    invoicePrefix: s.invoice_prefix || 'INV-',
+    invoice_prefix: s.invoice_prefix || 'INV-',
+    purchasePrefix: s.purchase_prefix || 'PUR-',
+    purchase_prefix: s.purchase_prefix || 'PUR-',
+    barcodePrefix: s.barcode_prefix || '0108923',
+    barcode_prefix: s.barcode_prefix || '0108923',
+    invoiceFooter: s.invoice_footer || '',
+    invoice_footer: s.invoice_footer || '',
+    lowStockLimit: s.low_stock_limit,
+    pricingPolicy: mode,
+    pricing_policy: mode,
+    pricingMode: mode,
+    pricing_mode: mode,
+    pricingPolicyLocked: locked,
+    pricing_policy_locked: locked,
+    isInstalled: Boolean(s.is_installed),
+    is_installed: Boolean(s.is_installed),
+    updatedAt: s.updated_at,
+  };
 }
 
 // GET /api/settings - Public or Authenticated to get company settings
@@ -37,59 +93,7 @@ router.get('/', async (_req: Request, res: Response) => {
     }
     const s: any = result.rows[0];
     res.json({
-      settings: {
-        id: s.id,
-        name: s.name,
-        companyName: s.name,
-        company_name: s.name,
-        phone: s.phone || '',
-        companyPhone: s.phone || '',
-        company_phone: s.phone || '',
-        email: s.email || '',
-        companyEmail: s.email || '',
-        company_email: s.email || '',
-        address: s.address || '',
-        companyAddress: s.address || '',
-        company_address: s.address || '',
-        strn: s.strn || '',
-        taxId: s.tax_id || s.tax_number || '',
-        tax_id: s.tax_id || s.tax_number || '',
-        taxNumber: s.tax_number || s.tax_id || '',
-        tax_number: s.tax_number || s.tax_id || '',
-        website: s.website || '',
-        logo: s.logo || '',
-        currency: s.currency || 'PKR',
-        currencyName: s.currency_name || 'Pakistani Rupee',
-        currency_name: s.currency_name || 'Pakistani Rupee',
-        currencySymbol: s.currency_symbol || 'Rs.',
-        currency_symbol: s.currency_symbol || 'Rs.',
-        invoicePrefix: s.invoice_prefix || 'INV-',
-        invoice_prefix: s.invoice_prefix || 'INV-',
-        purchasePrefix: s.purchase_prefix || 'PUR-',
-        purchase_prefix: s.purchase_prefix || 'PUR-',
-        barcodePrefix: s.barcode_prefix || '0108923',
-        barcode_prefix: s.barcode_prefix || '0108923',
-        invoiceFooter: s.invoice_footer || '',
-        invoice_footer: s.invoice_footer || '',
-        lowStockLimit: s.low_stock_limit,
-        pricingMode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
-        pricing_mode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
-        fixedProfitMargin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
-        fixed_profit_margin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
-        fixedProfitAmount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
-        fixed_profit_amount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
-        minProfitMargin: parseFloat(s.min_profit_margin ?? '15') || 15,
-        min_profit_margin: parseFloat(s.min_profit_margin ?? '15') || 15,
-        minProfitAmount: parseFloat(s.min_profit_amount ?? '0') || 0,
-        min_profit_amount: parseFloat(s.min_profit_amount ?? '0') || 0,
-        maxProfitMargin: parseFloat(s.max_profit_margin ?? '30') || 30,
-        max_profit_margin: parseFloat(s.max_profit_margin ?? '30') || 30,
-        maxProfitAmount: parseFloat(s.max_profit_amount ?? '0') || 0,
-        max_profit_amount: parseFloat(s.max_profit_amount ?? '0') || 0,
-        isInstalled: Boolean(s.is_installed),
-        is_installed: Boolean(s.is_installed),
-        updatedAt: s.updated_at,
-      },
+      settings: formatSettingsResponse(s),
     });
   } catch (err: any) {
     if (String(err?.message || '').includes('does not exist')) {
@@ -116,10 +120,12 @@ router.get('/', async (_req: Request, res: Response) => {
           purchase_prefix: 'PUR-',
           barcodePrefix: '0108923',
           barcode_prefix: '0108923',
-          minProfitMargin: 10,
-          min_profit_margin: 10,
-          maxProfitMargin: 30,
-          max_profit_margin: 30,
+          pricingPolicy: 'FIXED',
+          pricing_policy: 'FIXED',
+          pricingMode: 'FIXED',
+          pricing_mode: 'FIXED',
+          pricingPolicyLocked: false,
+          pricing_policy_locked: false,
           isInstalled: false,
           is_installed: false,
         },
@@ -148,42 +154,30 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
     const invoicePrefix = (req.body.invoice_prefix || req.body.invoicePrefix || 'INV-').trim();
 
     const logo = req.body.logo || '';
+    const receiptLogo = req.body.receipt_logo ?? req.body.receiptLogo ?? logo;
+    const showReceiptLogo = Boolean(req.body.show_receipt_logo ?? req.body.showReceiptLogo ?? false);
     const invoiceFooter = req.body.invoice_footer || req.body.invoiceFooter || '';
     const lowStockLimit = parseInt(req.body.low_stock_limit || req.body.lowStockLimit, 10) || 5;
-    const rawMinMargin = req.body.min_profit_margin !== undefined ? req.body.min_profit_margin : req.body.minProfitMargin;
-    const minProfitMargin = rawMinMargin !== undefined && rawMinMargin !== null && rawMinMargin !== ''
-      ? Math.max(0, Math.min(100, parseFloat(rawMinMargin) || 0))
-      : 10;
-    const rawMinAmount = req.body.min_profit_amount !== undefined ? req.body.min_profit_amount : req.body.minProfitAmount;
-    const minProfitAmount = rawMinAmount !== undefined && rawMinAmount !== null && rawMinAmount !== ''
-      ? Math.max(0, parseFloat(rawMinAmount) || 0)
-      : 0;
-    const rawMaxMargin = req.body.max_profit_margin !== undefined ? req.body.max_profit_margin : req.body.maxProfitMargin;
-    const maxProfitMargin = rawMaxMargin !== undefined && rawMaxMargin !== null && rawMaxMargin !== ''
-      ? Math.max(0, Math.min(1000, parseFloat(rawMaxMargin) || 0))
-      : 30;
-    const rawMaxAmount = req.body.max_profit_amount !== undefined ? req.body.max_profit_amount : req.body.maxProfitAmount;
-    const maxProfitAmount = rawMaxAmount !== undefined && rawMaxAmount !== null && rawMaxAmount !== ''
-      ? Math.max(0, parseFloat(rawMaxAmount) || 0)
-      : 0;
-    const rawFixedMargin = req.body.fixed_profit_margin !== undefined ? req.body.fixed_profit_margin : req.body.fixedProfitMargin;
-    const fixedProfitMargin = rawFixedMargin !== undefined && rawFixedMargin !== null && rawFixedMargin !== ''
-      ? Math.max(0, Math.min(1000, parseFloat(rawFixedMargin) || 0))
-      : 30;
-    const rawFixedAmount = req.body.fixed_profit_amount !== undefined ? req.body.fixed_profit_amount : req.body.fixedProfitAmount;
-    const fixedProfitAmount = rawFixedAmount !== undefined && rawFixedAmount !== null && rawFixedAmount !== ''
-      ? Math.max(0, parseFloat(rawFixedAmount) || 0)
-      : 0;
-    // Retrieve current settings to lock Pricing Policy if already installed
-    const currentSettingsRes = await pgClient.query<{ is_installed: boolean; pricing_mode: string }>(
-      'SELECT is_installed, pricing_mode FROM company_settings LIMIT 1'
-    );
-    const isInstalled = Boolean(currentSettingsRes.rows[0]?.is_installed);
-    let pricingMode = (currentSettingsRes.rows[0]?.pricing_mode || 'NEGOTIABLE').toUpperCase();
-    if (!isInstalled) {
-      const rawPricingMode = String(req.body.pricing_mode || req.body.pricingMode || pricingMode).toUpperCase();
-      pricingMode = rawPricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE';
+
+    // Retrieve current settings to enforce the Lock mechanism on Pricing Policy once initialized
+    const currentSettingsRes = await pgClient.query<{
+      is_installed: boolean;
+      pricing_policy_locked: boolean;
+      pricing_mode: string;
+    }>('SELECT is_installed, pricing_policy_locked, pricing_mode FROM company_settings LIMIT 1');
+
+    const currentRow = currentSettingsRes.rows[0];
+    const isPolicyLocked = Boolean(currentRow?.is_installed || currentRow?.pricing_policy_locked);
+    let pricingMode = String(currentRow?.pricing_mode || 'FIXED').toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+
+    // Only allow setting pricingMode if the store is NOT yet initialized/locked
+    if (!isPolicyLocked) {
+      const requestedMode = String(
+        req.body.pricingPolicy || req.body.pricing_policy || req.body.pricing_mode || req.body.pricingMode || pricingMode
+      ).toUpperCase();
+      pricingMode = requestedMode === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
     }
+
     const currencyCode = req.body.currency || 'PKR';
 
     // 1. Validations: Company Profile
@@ -221,14 +215,13 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
     }
 
     const updateRes = await pgClient.query(
-      `UPDATE company_settings SET 
+      `UPDATE company_settings SET
          name = $1, phone = $2, email = $3, address = $4,
          strn = $5, tax_id = $6, tax_number = $6, website = $7, logo = $8,
          currency_name = $9, currency = $10, currency_symbol = $11,
          barcode_prefix = $12, purchase_prefix = $13, invoice_prefix = $14,
-         invoice_footer = $15, low_stock_limit = $16, min_profit_margin = $17, max_profit_margin = $18,
-         pricing_mode = $19, fixed_profit_margin = $20, fixed_profit_amount = $21,
-         min_profit_amount = $22, max_profit_amount = $23, updated_at = NOW()
+         invoice_footer = $15, low_stock_limit = $16,
+         pricing_mode = $17, show_receipt_logo = $18, receipt_logo = $19, updated_at = NOW()
        WHERE id = (SELECT id FROM company_settings LIMIT 1)
        RETURNING *`,
       [
@@ -248,72 +241,16 @@ router.put('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res
         invoicePrefix,
         invoiceFooter,
         lowStockLimit,
-        minProfitMargin,
-        maxProfitMargin,
         pricingMode,
-        fixedProfitMargin,
-        fixedProfitAmount,
-        minProfitAmount,
-        maxProfitAmount,
+        showReceiptLogo,
+        receiptLogo,
       ]
     );
 
     const s: any = updateRes.rows[0];
     res.json({
       message: 'Company settings updated successfully.',
-      settings: {
-        id: s.id,
-        name: s.name,
-        companyName: s.name,
-        company_name: s.name,
-        phone: s.phone,
-        companyPhone: s.phone,
-        company_phone: s.phone,
-        email: s.email,
-        companyEmail: s.email,
-        company_email: s.email,
-        address: s.address,
-        companyAddress: s.address,
-        company_address: s.address,
-        strn: s.strn,
-        taxId: s.tax_id,
-        tax_id: s.tax_id,
-        taxNumber: s.tax_number,
-        tax_number: s.tax_number,
-        website: s.website,
-        logo: s.logo,
-        currency: s.currency,
-        currencyName: s.currency_name,
-        currency_name: s.currency_name,
-        currencySymbol: s.currency_symbol,
-        currency_symbol: s.currency_symbol,
-        invoicePrefix: s.invoice_prefix,
-        invoice_prefix: s.invoice_prefix,
-        purchasePrefix: s.purchase_prefix,
-        purchase_prefix: s.purchase_prefix,
-        barcodePrefix: s.barcode_prefix,
-        barcode_prefix: s.barcode_prefix,
-        invoiceFooter: s.invoice_footer,
-        invoice_footer: s.invoice_footer,
-        lowStockLimit: s.low_stock_limit,
-        pricingMode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
-        pricing_mode: (s.pricing_mode || 'NEGOTIABLE').toUpperCase(),
-        fixedProfitMargin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
-        fixed_profit_margin: parseFloat(s.fixed_profit_margin ?? '30') || 30,
-        fixedProfitAmount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
-        fixed_profit_amount: parseFloat(s.fixed_profit_amount ?? '0') || 0,
-        minProfitMargin: parseFloat(s.min_profit_margin ?? '10') || 10,
-        min_profit_margin: parseFloat(s.min_profit_margin ?? '10') || 10,
-        minProfitAmount: parseFloat(s.min_profit_amount ?? '0') || 0,
-        min_profit_amount: parseFloat(s.min_profit_amount ?? '0') || 0,
-        maxProfitMargin: parseFloat(s.max_profit_margin ?? '30') || 30,
-        max_profit_margin: parseFloat(s.max_profit_margin ?? '30') || 30,
-        maxProfitAmount: parseFloat(s.max_profit_amount ?? '0') || 0,
-        max_profit_amount: parseFloat(s.max_profit_amount ?? '0') || 0,
-        isInstalled: Boolean(s.is_installed),
-        is_installed: Boolean(s.is_installed),
-        updatedAt: s.updated_at,
-      },
+      settings: formatSettingsResponse(s),
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update settings: ' + err.message });

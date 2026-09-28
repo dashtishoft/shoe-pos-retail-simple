@@ -24,7 +24,7 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-// Company Settings
+// Company Settings (StoreSettings)
 export const companySettings = pgTable('company_settings', {
   id: serial('id').primaryKey(),
   name: text('name').default('Your Shoe Store').notNull(),
@@ -44,19 +44,14 @@ export const companySettings = pgTable('company_settings', {
   barcodePrefix: text('barcode_prefix').default('0108923').notNull(),
   invoiceFooter: text('invoice_footer').default('Thank you for shopping with us!').notNull(),
   lowStockLimit: integer('low_stock_limit').default(5).notNull(),
-  pricingMode: text('pricing_mode').default('NEGOTIABLE').notNull(),
-  fixedProfitMargin: numeric('fixed_profit_margin', { precision: 5, scale: 2 }).default('30.00'),
-  fixedProfitAmount: numeric('fixed_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
-  minProfitMargin: numeric('min_profit_margin', { precision: 5, scale: 2 }).default('15.00'),
-  minProfitAmount: numeric('min_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
-  maxProfitMargin: numeric('max_profit_margin', { precision: 5, scale: 2 }).default('30.00'),
-  maxProfitAmount: numeric('max_profit_amount', { precision: 12, scale: 2 }).default('0.00'),
+  pricingMode: text('pricing_mode').default('FIXED').notNull(),
+  pricingPolicyLocked: boolean('pricing_policy_locked').default(false).notNull(),
   isInstalled: boolean('is_installed').default(false).notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 // Products (1 Product = 1 SKU = 1 Barcode = Total Stock)
-// Brand and Category are stored directly as plain text string fields
+// Refined Pricing Fields: costPrice, sellingPrice (for Fixed), minPrice (for Negotiable), maxPrice (for Negotiable)
 export const products = pgTable('products', {
   id: serial('id').primaryKey(),
   brand: text('brand').default('Local').notNull(),
@@ -67,15 +62,9 @@ export const products = pgTable('products', {
   description: text('description').default(''),
   primaryImageUrl: text('primary_image_url').default(''),
   costPrice: numeric('cost_price', { precision: 12, scale: 2 }).notNull(),
-  marginType: text('margin_type').default('FIXED'),
-  profitCalculationMethod: text('profit_calculation_method').default('FIXED_AMOUNT'),
-  profitMargin: numeric('profit_margin', { precision: 5, scale: 2 }),
-  profitAmount: numeric('profit_amount', { precision: 12, scale: 2 }),
-  customMinMargin: numeric('custom_min_margin', { precision: 5, scale: 2 }),
-  customMaxMargin: numeric('custom_max_margin', { precision: 5, scale: 2 }),
-  salePrice: integer('sale_price'),
-  minSalePrice: integer('min_sale_price'),
-  maxSalePrice: integer('max_sale_price'),
+  sellingPrice: integer('selling_price').default(0).notNull(),
+  minPrice: integer('min_price').default(0).notNull(),
+  maxPrice: integer('max_price').default(0).notNull(),
   totalStock: integer('total_stock').default(0).notNull(),
   lowStockLimit: integer('low_stock_limit').default(5).notNull(),
   active: boolean('active').default(true).notNull(),
@@ -166,7 +155,7 @@ export const purchaseItems = pgTable('purchase_items', {
   subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
 });
 
-// Purchase Returns (Supplier Debit Notes for Defective Cartons)
+// Purchase Returns (Supplier Debit Notes for Defective Footwear)
 export const purchaseReturns = pgTable('purchase_returns', {
   id: serial('id').primaryKey(),
   returnNumber: text('return_number').notNull().unique(),
@@ -190,12 +179,10 @@ export const purchaseReturnItems = pgTable('purchase_return_items', {
   id: serial('id').primaryKey(),
   purchaseReturnId: integer('purchase_return_id').references(() => purchaseReturns.id, { onDelete: 'cascade' }).notNull(),
   productId: integer('product_id').references(() => products.id).notNull(),
-  cartonQuantity: integer('carton_quantity').default(1).notNull(),
-  pairsPerCarton: integer('pairs_per_carton').default(1).notNull(),
   quantity: integer('quantity').notNull(),
   unitPurchasePrice: numeric('unit_purchase_price', { precision: 12, scale: 2 }).notNull(),
   subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
-  defectType: text('defect_type').default('DEFECTIVE_CARTON'),
+  defectType: text('defect_type').default('MANUFACTURING_DEFECT'),
 });
 
 // Sales
@@ -289,12 +276,3 @@ export const salesRelations = relations(sales, ({ one, many }) => ({
   user: one(users, { fields: [sales.createdBy], references: [users.id] }),
   items: many(saleItems),
 }));
-
-// Carton Packs configuration table (id, pack_name, pairs_per_carton, is_default)
-export const cartonPacks = pgTable('carton_packs', {
-  id: serial('id').primaryKey(),
-  packName: text('pack_name').notNull(),
-  pairsPerCarton: integer('pairs_per_carton').notNull(),
-  isDefault: boolean('is_default').default(false).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});

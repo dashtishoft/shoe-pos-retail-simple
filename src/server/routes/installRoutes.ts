@@ -379,14 +379,22 @@ router.post('/settings', async (req: Request, res: Response) => {
       });
     }
 
-    // Ensure pricing_mode column exists
-    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'NEGOTIABLE'");
+    // Ensure pricing_mode and pricing_policy_locked columns exist
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'FIXED'");
+    await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_policy_locked BOOLEAN NOT NULL DEFAULT false");
 
-    const rawPricingMode = String(req.body.pricing_mode || req.body.pricingMode || 'NEGOTIABLE').toUpperCase();
-    const finalPricingMode = rawPricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE';
+    const requestedPricingMode = String(
+      req.body.pricingPolicy || req.body.pricing_policy || req.body.pricing_mode || req.body.pricingMode || 'FIXED'
+    ).toUpperCase();
+    let finalPricingMode = requestedPricingMode === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
 
-    const existingSettings = await pgClient.query<any>('SELECT id FROM company_settings LIMIT 1');
+    const existingSettings = await pgClient.query<any>('SELECT id, is_installed, pricing_policy_locked, pricing_mode FROM company_settings LIMIT 1');
     if (existingSettings.rows.length > 0) {
+      const existingRow = existingSettings.rows[0];
+      // If store was already initialized and pricing policy locked, preserve the locked policy
+      if (existingRow.is_installed || existingRow.pricing_policy_locked) {
+        finalPricingMode = String(existingRow.pricing_mode || 'FIXED').toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+      }
       await pgClient.query(
         `UPDATE company_settings SET
           name = $1,
@@ -426,7 +434,7 @@ router.post('/settings', async (req: Request, res: Response) => {
           invoice_footer.trim(),
           parseInt(String(low_stock_limit), 10) || 5,
           finalPricingMode,
-          existingSettings.rows[0].id,
+          existingRow.id,
         ]
       );
     } else {
@@ -435,8 +443,8 @@ router.post('/settings', async (req: Request, res: Response) => {
           name, phone, email, address, website, tax_id, strn, logo,
           currency, currency_symbol, currency_name,
           invoice_prefix, purchase_prefix, barcode_prefix,
-          invoice_footer, low_stock_limit, pricing_mode, is_installed
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, false)`,
+          invoice_footer, low_stock_limit, pricing_mode, pricing_policy_locked, is_installed
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, false, false)`,
         [
           shop_name.trim(),
           shop_phone.trim(),
@@ -650,8 +658,8 @@ router.post('/complete', async (req: Request, res: Response) => {
       });
     }
 
-    // Mark installation complete in database
-    await pgClient.query('UPDATE company_settings SET is_installed = true, updated_at = NOW()');
+    // Mark installation complete and permanently lock pricing_policy in database
+    await pgClient.query('UPDATE company_settings SET is_installed = true, pricing_policy_locked = true, updated_at = NOW()');
 
     // Fetch the primary admin user to issue immediate login token
     const adminRes = await pgClient.query<any>(
@@ -771,17 +779,27 @@ router.post('/setup', async (req: Request, res: Response) => {
       });
     }
 
-    // 4. Save Company Settings
-    const existingSettings = await pgClient.query<any>('SELECT id FROM company_settings LIMIT 1');
+    // 4. Save Company Settings & Lock Pricing Policy
+    const requestedPricingMode = String(
+      req.body.pricingPolicy || req.body.pricing_policy || req.body.pricing_mode || req.body.pricingMode || 'FIXED'
+    ).toUpperCase();
+    let finalPricingMode = requestedPricingMode === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+
+    const existingSettings = await pgClient.query<any>('SELECT id, is_installed, pricing_policy_locked, pricing_mode FROM company_settings LIMIT 1');
     if (existingSettings.rows.length > 0) {
+      const existingRow = existingSettings.rows[0];
+      if ((existingRow.is_installed || existingRow.pricing_policy_locked) && !(drop_tables || dropTables)) {
+        finalPricingMode = String(existingRow.pricing_mode || 'FIXED').toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+      }
       await pgClient.query(
         `UPDATE company_settings SET
           name = $1, phone = $2, email = $3, address = $4, website = $5,
           tax_id = $6, strn = $7, logo = $8, currency = $9, currency_symbol = $10,
           currency_name = $11, invoice_prefix = $12, purchase_prefix = $13,
           barcode_prefix = $14, invoice_footer = $15, low_stock_limit = $16,
+          pricing_mode = $17, pricing_policy_locked = true,
           is_installed = true, updated_at = NOW()
-        WHERE id = $17`,
+        WHERE id = $18`,
         [
           shop_name.trim(),
           shop_phone.trim(),
@@ -799,7 +817,8 @@ router.post('/setup', async (req: Request, res: Response) => {
           sanitizedBarcode,
           invoice_footer.trim(),
           parseInt(String(low_stock_limit), 10) || 5,
-          existingSettings.rows[0].id,
+          finalPricingMode,
+          existingRow.id,
         ]
       );
     } else {
@@ -808,8 +827,8 @@ router.post('/setup', async (req: Request, res: Response) => {
           name, phone, email, address, website, tax_id, strn, logo,
           currency, currency_symbol, currency_name,
           invoice_prefix, purchase_prefix, barcode_prefix,
-          invoice_footer, low_stock_limit, is_installed
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, true)`,
+          invoice_footer, low_stock_limit, pricing_mode, pricing_policy_locked, is_installed
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, true)`,
         [
           shop_name.trim(),
           shop_phone.trim(),
@@ -827,6 +846,7 @@ router.post('/setup', async (req: Request, res: Response) => {
           sanitizedBarcode,
           invoice_footer.trim(),
           parseInt(String(low_stock_limit), 10) || 5,
+          finalPricingMode,
         ]
       );
     }

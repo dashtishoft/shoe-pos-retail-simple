@@ -16,7 +16,7 @@ import { api } from '../../services/api.ts';
 import { formatStockPrice } from '../../utils/priceFormat.ts';
 import { SupplierPicker } from './SupplierPicker.tsx';
 
-interface ReturnCartonItem {
+interface ReturnShoeItem {
   productId: number;
   article: string;
   sku?: string;
@@ -24,8 +24,6 @@ interface ReturnCartonItem {
   currentStock: number;
   purchasedQty?: number;
   alreadyReturnedQty?: number;
-  cartonQuantity: number;
-  pairsPerCarton: number;
   totalPairs: number;
   unitPurchasePrice: number;
   subtotal: number;
@@ -48,13 +46,11 @@ const COMMON_DEFECT_TYPES = [
   'Broken Stitching / Seam Defect',
   'Color Stain / Dye Bleeding',
   'Mismatched Left & Right Shoe in Box',
-  'Wrong Size Assortment in Carton',
-  'Damaged / Crushed Carton in Transit',
-  'Water Damage / Mold in Carton',
+  'Wrong Size Assortment',
+  'Damaged / Crushed in Transit',
+  'Water Damage / Mold',
   'Other Manufacturing Defect',
 ];
-
-const PRESET_CARTON_SIZES = [6, 8, 10, 12, 24];
 
 export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
   isOpen,
@@ -83,11 +79,11 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
 
   // General fields
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [reason, setReason] = useState<string>('Defective shoe cartons returned to manufacturer/supplier');
+  const [reason, setReason] = useState<string>('Defective shoe pairs returned to manufacturer/supplier');
   const [notes, setNotes] = useState<string>('');
 
   // Return items list
-  const [returnItems, setReturnItems] = useState<ReturnCartonItem[]>([]);
+  const [returnItems, setReturnItems] = useState<ReturnShoeItem[]>([]);
 
   // Product catalog search for direct return
   const [productSearch, setProductSearch] = useState<string>('');
@@ -171,12 +167,10 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
         setSupplierBalance(res.purchase.supplierBalance || 0);
 
         // Pre-populate return items candidate list
-        const initialReturnItems: ReturnCartonItem[] = (res.items || [])
+        const initialReturnItems: ReturnShoeItem[] = (res.items || [])
           .filter((item: any) => item.returnableQuantity > 0)
           .map((item: any) => {
-            const defaultPairsPerCarton = item.returnableQuantity >= 12 ? 12 : item.returnableQuantity >= 6 ? 6 : item.returnableQuantity;
-            const defaultCartons = 1;
-            const totalPairs = Math.min(item.returnableQuantity, defaultCartons * defaultPairsPerCarton);
+            const totalPairs = Math.min(item.returnableQuantity, 1);
 
             return {
               productId: item.productId,
@@ -186,8 +180,6 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
               currentStock: item.currentStock,
               purchasedQty: item.purchasedQuantity,
               alreadyReturnedQty: item.alreadyReturnedQuantity,
-              cartonQuantity: defaultCartons,
-              pairsPerCarton: defaultPairsPerCarton,
               totalPairs: totalPairs,
               unitPurchasePrice: item.unitPurchasePrice,
               subtotal: Math.round(totalPairs * item.unitPurchasePrice * 100) / 100,
@@ -235,22 +227,18 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
     }
 
     const unitPrice = parseFloat(String(product.costPrice ?? product.cost_price ?? '0'));
-    const defaultPairsPerCarton = 12;
-    const defaultCartonQty = 1;
-    const totalPairs = defaultCartonQty * defaultPairsPerCarton;
     const availStock = product.totalStock ?? product.total_stock ?? 0;
+    const totalPairs = Math.min(availStock, 1) || 1;
 
-    const newItem: ReturnCartonItem = {
+    const newItem: ReturnShoeItem = {
       productId: product.id,
       article: product.article || product.name,
       sku: product.sku,
       barcode: product.barcode,
       currentStock: availStock,
-      cartonQuantity: defaultCartonQty,
-      pairsPerCarton: defaultPairsPerCarton,
-      totalPairs: Math.min(availStock, totalPairs),
+      totalPairs,
       unitPurchasePrice: unitPrice,
-      subtotal: Math.round(Math.min(availStock, totalPairs) * unitPrice * 100) / 100,
+      subtotal: Math.round(totalPairs * unitPrice * 100) / 100,
       defectType: 'Defective Sole / Cracked Outsole',
     };
 
@@ -259,17 +247,10 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
     setSearchResults([]);
   };
 
-  const updateItem = (index: number, updates: Partial<ReturnCartonItem>) => {
+  const updateItem = (index: number, updates: Partial<ReturnShoeItem>) => {
     setReturnItems((prev) => {
       const copy = [...prev];
       const current = { ...copy[index], ...updates };
-
-      // Recalculate total pairs if cartonQuantity or pairsPerCarton changed
-      if (updates.cartonQuantity !== undefined || updates.pairsPerCarton !== undefined) {
-        const cQty = Math.max(1, current.cartonQuantity || 1);
-        const pQty = Math.max(1, current.pairsPerCarton || 1);
-        current.totalPairs = cQty * pQty;
-      }
 
       // Recalculate subtotal
       const pairs = current.totalPairs || 0;
@@ -286,7 +267,6 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
   };
 
   const totalReturnDebit = returnItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
-  const totalCartons = returnItems.reduce((sum, item) => sum + (item.cartonQuantity || 1), 0);
   const totalPairs = returnItems.reduce((sum, item) => sum + (item.totalPairs || 0), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -299,7 +279,7 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
     }
 
     if (returnItems.length === 0) {
-      setFormError('Please add at least one defective shoe carton to return.');
+      setFormError('Please add at least one defective shoe item to return.');
       return;
     }
 
@@ -334,8 +314,6 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
         notes: notes.trim(),
         items: returnItems.map((item) => ({
           productId: item.productId,
-          cartonQuantity: item.cartonQuantity,
-          pairsPerCarton: item.pairsPerCarton,
           quantity: item.totalPairs,
           unitPurchasePrice: item.unitPurchasePrice,
           defectType: item.defectType,
@@ -365,10 +343,10 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
             </span>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-                Return Defective Shoe Cartons to Supplier
+                Return Defective Footwear to Supplier
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Issue Supplier Debit Note & deduct defective pairs from inventory
+                Issue Supplier Debit Note &amp; deduct defective pairs from inventory
               </p>
             </div>
           </div>
@@ -532,9 +510,7 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
                       type="button"
                       disabled={isAdded || pi.returnableQuantity <= 0}
                       onClick={() => {
-                        const defaultCartons = 1;
-                        const defaultPairsPerCarton = pi.returnableQuantity >= 12 ? 12 : pi.returnableQuantity >= 6 ? 6 : pi.returnableQuantity;
-                        const totalPairs = Math.min(pi.returnableQuantity, defaultCartons * defaultPairsPerCarton);
+                        const totalPairs = Math.min(pi.returnableQuantity, 1);
 
                         setReturnItems((prev) => [
                           ...prev,
@@ -546,8 +522,6 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
                             currentStock: pi.currentStock,
                             purchasedQty: pi.purchasedQuantity,
                             alreadyReturnedQty: pi.alreadyReturnedQuantity,
-                            cartonQuantity: defaultCartons,
-                            pairsPerCarton: defaultPairsPerCarton,
                             totalPairs: totalPairs,
                             unitPurchasePrice: pi.unitPurchasePrice,
                             subtotal: Math.round(totalPairs * pi.unitPurchasePrice * 100) / 100,
@@ -637,7 +611,7 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center space-x-1.5">
                 <Package className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                <span>Defective Carton Items for Return ({returnItems.length})</span>
+                <span>Defective Footwear Items for Return ({returnItems.length})</span>
               </label>
               <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Total Pairs to Deduct: <strong className="text-slate-900 dark:text-white">{totalPairs}</strong>
@@ -692,61 +666,12 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
                         </button>
                       </div>
 
-                      {/* Carton & Pairs Inputs */}
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                        {/* Carton Quantity */}
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                            Carton Count
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.cartonQuantity}
-                            onChange={(e) =>
-                              updateItem(idx, { cartonQuantity: parseInt(e.target.value, 10) || 1 })
-                            }
-                            className="w-full font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-[#0B1120] border border-slate-300 dark:border-[#1A263D] rounded-lg px-2.5 py-1.5 text-center focus:ring-1 focus:ring-rose-500"
-                          />
-                        </div>
-
-                        {/* Pairs Per Carton */}
-                        <div>
-                          <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                            Pairs / Carton
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.pairsPerCarton}
-                            onChange={(e) =>
-                              updateItem(idx, { pairsPerCarton: parseInt(e.target.value, 10) || 1 })
-                            }
-                            className="w-full font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-[#0B1120] border border-slate-300 dark:border-[#1A263D] rounded-lg px-2.5 py-1.5 text-center focus:ring-1 focus:ring-rose-500"
-                          />
-                          {/* Quick presets */}
-                          <div className="flex space-x-1 mt-1">
-                            {PRESET_CARTON_SIZES.map((size) => (
-                              <button
-                                key={size}
-                                type="button"
-                                onClick={() => updateItem(idx, { pairsPerCarton: size })}
-                                className={`text-[9px] px-1 py-0.5 rounded border ${
-                                  item.pairsPerCarton === size
-                                    ? 'bg-rose-500 text-white border-rose-600 font-bold'
-                                    : 'bg-slate-100 dark:bg-[#131D33] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#1A263D] hover:bg-slate-200 dark:hover:bg-[#1A263D]'
-                                }`}
-                              >
-                                {size}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
+                      {/* Pairs & Cost Inputs */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                         {/* Total Pairs */}
                         <div>
                           <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                            Total Pairs Out
+                            Return Quantity (Pairs)
                           </label>
                           <input
                             type="number"
@@ -846,7 +771,7 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Batch inspected by Q.C. team, carton handed back to delivery driver"
+                placeholder="e.g. Batch inspected by Q.C. team, items handed back to delivery driver"
                 className="w-full text-xs border border-slate-300 dark:border-[#1A263D] bg-white dark:bg-[#0B1120] text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
               />
             </div>
@@ -875,7 +800,7 @@ export const SupplierReturnModal: React.FC<SupplierReturnModalProps> = ({
               <div className="p-2.5 bg-white dark:bg-[#0E1628] rounded-xl border border-slate-200 dark:border-[#1A263D]">
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 block">Defective Shoe Units</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  {totalCartons} Cartons ({totalPairs} Pairs)
+                  {totalPairs} Pairs
                 </span>
               </div>
               <div className="p-2.5 bg-white dark:bg-[#0E1628] rounded-xl border border-slate-200 dark:border-[#1A263D]">

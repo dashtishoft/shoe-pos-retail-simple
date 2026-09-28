@@ -568,12 +568,10 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                           <span className="text-[10px] text-slate-400 font-normal ml-1">cost</span>
                         </div>
                         {(() => {
-                          const policy = String(p.marginType || p.margin_type || (p.salePrice ? 'FIXED' : (companySettings?.pricing_mode || 'FIXED'))).toUpperCase();
-                          const isFixed = policy === 'FIXED';
                           const retailPrice = getProductRetailPrice(p, companySettings);
                           const minFloor = getProductMinFloorPrice(p, companySettings);
 
-                          return isFixed ? (
+                          return isFixedPolicy ? (
                             <div className="flex items-center justify-end gap-1 mt-0.5">
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 uppercase">
                                 Fixed
@@ -586,14 +584,14 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
                             <div className="flex flex-col items-end mt-0.5">
                               <div className="flex items-center gap-1">
                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 uppercase">
-                                  Negotiable
+                                  Max
                                 </span>
                                 <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
                                   {currencySymbol} {formatStockPrice(retailPrice)}
                                 </span>
                               </div>
                               <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-semibold">
-                                Floor: {currencySymbol} {formatStockPrice(minFloor)}
+                                Min: {currencySymbol} {formatStockPrice(minFloor)}
                               </span>
                             </div>
                           );

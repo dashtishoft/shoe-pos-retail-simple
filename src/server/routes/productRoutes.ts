@@ -15,7 +15,7 @@ import {
   buildSkuInfo,
 } from '../../utils/sku.ts';
 import { analyzeProductImageWithGemini } from '../gemini.ts';
-import { calculateAutomaticPricing, smartRoundUp } from '../../utils/pricing.ts';
+import { validateAndNormalizeProductPricing } from '../../schemas/productSchema.ts';
 
 const router = Router();
 
@@ -37,34 +37,6 @@ export async function getNextProductId(): Promise<number> {
   );
   const maxId = parseInt(maxRes.rows[0]?.max_id || '1', 10);
   return Math.max(seqNext, maxId);
-}
-
-/**
- * Returns the company's minimum profit margin percentage (default 10%).
- */
-export async function getMinProfitMarginPercent(): Promise<number> {
-  try {
-    const settingsRes = await pgClient.query<{ min_profit_margin: string }>(
-      'SELECT min_profit_margin FROM company_settings LIMIT 1'
-    );
-    return parseFloat(settingsRes.rows[0]?.min_profit_margin ?? '10') || 10;
-  } catch {
-    return 10;
-  }
-}
-
-/**
- * Returns the company's maximum profit margin percentage (default 30%).
- */
-export async function getMaxProfitMarginPercent(): Promise<number> {
-  try {
-    const settingsRes = await pgClient.query<{ max_profit_margin: string }>(
-      'SELECT max_profit_margin FROM company_settings LIMIT 1'
-    );
-    return parseFloat(settingsRes.rows[0]?.max_profit_margin ?? '30') || 30;
-  } catch {
-    return 30;
-  }
 }
 
 /**
@@ -302,24 +274,19 @@ async function ensureProductAndSettingsColumns() {
       "SELECT (to_regclass('public.products') IS NOT NULL) as has_products, (to_regclass('public.company_settings') IS NOT NULL) as has_settings"
     );
     if (reg.rows[0]?.has_settings) {
-      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'NEGOTIABLE'");
-      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_margin NUMERIC(5, 2) NOT NULL DEFAULT 30.00");
-      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS fixed_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
-      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS min_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
-      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS max_profit_amount NUMERIC(12, 2) NOT NULL DEFAULT 0");
+      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_mode VARCHAR(30) NOT NULL DEFAULT 'FIXED'");
+      await pgClient.query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS pricing_policy_locked BOOLEAN NOT NULL DEFAULT false");
+      await pgClient.query("UPDATE company_settings SET pricing_policy_locked = true WHERE is_installed = true");
     }
     if (reg.rows[0]?.has_products) {
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS size VARCHAR(30) DEFAULT '42'");
+      await pgClient.query("ALTER TABLE products DROP COLUMN IF EXISTS size");
+      await pgClient.query("ALTER TABLE products DROP COLUMN IF EXISTS color");
       await pgClient.query("CREATE INDEX IF NOT EXISTS products_sku_idx ON products(sku)");
       await pgClient.query("CREATE INDEX IF NOT EXISTS products_article_idx ON products(article)");
       await pgClient.query("CREATE INDEX IF NOT EXISTS products_barcode_idx ON products(barcode)");
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS margin_type VARCHAR(30) NOT NULL DEFAULT 'FIXED'");
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_calculation_method VARCHAR(30) NOT NULL DEFAULT 'FIXED_AMOUNT'");
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC(5, 2) DEFAULT 30.00");
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS profit_amount NUMERIC(12, 2) DEFAULT 0");
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_min_margin NUMERIC(5, 2)");
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_max_margin NUMERIC(5, 2)");
-      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price NUMERIC(12, 2)");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_price INTEGER NOT NULL DEFAULT 0");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS min_price INTEGER NOT NULL DEFAULT 0");
+      await pgClient.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS max_price INTEGER NOT NULL DEFAULT 0");
     }
     if (reg.rows[0]?.has_settings && reg.rows[0]?.has_products) {
       productColumnsVerified = true;
@@ -329,78 +296,99 @@ async function ensureProductAndSettingsColumns() {
 
 // Company pricing settings helper
 export async function getCompanyPricingSettings(): Promise<{
-  pricingMode: string;
-  minProfitMargin: number;
-  minProfitAmount: number;
-  maxProfitMargin: number;
-  maxProfitAmount: number;
-  fixedProfitMargin: number;
-  fixedProfitAmount: number;
+  pricingMode: 'FIXED' | 'NEGOTIABLE';
+  pricingPolicy: 'FIXED' | 'NEGOTIABLE';
+  pricingPolicyLocked: boolean;
   currencySymbol: string;
 }> {
   try {
     await ensureProductAndSettingsColumns();
     const res = await pgClient.query<any>(
-      'SELECT pricing_mode, min_profit_margin, min_profit_amount, max_profit_margin, max_profit_amount, fixed_profit_margin, fixed_profit_amount, currency_symbol FROM company_settings LIMIT 1'
+      'SELECT pricing_mode, pricing_policy_locked, is_installed, currency_symbol FROM company_settings LIMIT 1'
     );
     const row = res.rows[0];
+    const mode = String(row?.pricing_mode || 'FIXED').toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
     return {
-      pricingMode: (row?.pricing_mode || 'NEGOTIABLE').toUpperCase(),
-      minProfitMargin: parseFloat(row?.min_profit_margin ?? '15') || 15,
-      minProfitAmount: parseFloat(row?.min_profit_amount ?? '0') || 0,
-      maxProfitMargin: parseFloat(row?.max_profit_margin ?? '30') || 30,
-      maxProfitAmount: parseFloat(row?.max_profit_amount ?? '0') || 0,
-      fixedProfitMargin: parseFloat(row?.fixed_profit_margin ?? '30') || 30,
-      fixedProfitAmount: parseFloat(row?.fixed_profit_amount ?? '0') || 0,
+      pricingMode: mode,
+      pricingPolicy: mode,
+      pricingPolicyLocked: Boolean(row?.pricing_policy_locked || row?.is_installed),
       currencySymbol: row?.currency_symbol || 'Rs.',
     };
   } catch {
     return {
-      pricingMode: 'NEGOTIABLE',
-      minProfitMargin: 15,
-      minProfitAmount: 0,
-      maxProfitMargin: 30,
-      maxProfitAmount: 0,
-      fixedProfitMargin: 30,
-      fixedProfitAmount: 0,
+      pricingMode: 'FIXED',
+      pricingPolicy: 'FIXED',
+      pricingPolicyLocked: false,
       currencySymbol: 'Rs.',
     };
   }
 }
 
-// Real-time dynamic calculation of the 2 selling prices (minSalePrice & maxSalePrice)
-export function computeRealtimeSellingPrices(
-  costPrice: number,
-  settings: { pricingMode: string; minProfitMargin: number; maxProfitMargin: number; fixedProfitMargin: number }
-): { minSalePrice: number; maxSalePrice: number } {
-  const cost = Math.max(0, Number(costPrice) || 0);
-  if (cost <= 0) {
-    return { minSalePrice: 0, maxSalePrice: 0 };
-  }
+function mapProductRow(row: any, settings: { pricingMode: 'FIXED' | 'NEGOTIABLE' }) {
+  const costPrice = Math.round(parseFloat(row.cost_price) || 0);
+  const rawSelling = Math.round(Number(row.selling_price ?? 0));
+  const rawMin = Math.round(Number(row.min_price ?? 0));
+  const rawMax = Math.round(Number(row.max_price ?? 0));
+
+  let sellingPrice: number;
+  let minPrice: number;
+  let maxPrice: number;
+
   if (settings.pricingMode === 'FIXED') {
-    const fixedPrice = Math.round(cost * (1 + settings.fixedProfitMargin / 100));
-    return { minSalePrice: fixedPrice, maxSalePrice: fixedPrice };
+    const resolvedFixed = rawSelling > 0 ? rawSelling : rawMax > 0 ? rawMax : rawMin > 0 ? rawMin : costPrice;
+    sellingPrice = resolvedFixed;
+    minPrice = resolvedFixed;
+    maxPrice = resolvedFixed;
+  } else {
+    minPrice = rawMin > 0 ? rawMin : rawSelling > 0 ? rawSelling : costPrice;
+    maxPrice = Math.max(minPrice, rawMax > 0 ? rawMax : rawSelling > 0 ? rawSelling : minPrice);
+    sellingPrice = maxPrice;
   }
-  const minPrice = Math.round(cost * (1 + settings.minProfitMargin / 100));
-  const maxPrice = Math.round(cost * (1 + settings.maxProfitMargin / 100));
+
   return {
+    id: row.id,
+    name: row.name,
+    brand: row.brand || 'Local',
+    brandName: row.brand || 'Local',
+    brandLogo: '',
+    category: row.category || 'Casual Shoes',
+    categoryName: row.category || 'Casual Shoes',
+    sku: row.sku,
+    article: row.article || '',
+    barcode: row.barcode,
+    primaryImageUrl: row.primary_image_url,
+    description: row.description,
+    costPrice,
+    sellingPrice,
+    minPrice,
+    maxPrice,
+    pricingPolicy: settings.pricingMode,
+    pricing_mode: settings.pricingMode,
+    // Backward-compatible aliases for POS / Sticker / Catalog components
+    salePrice: sellingPrice,
     minSalePrice: minPrice,
-    maxSalePrice: Math.max(minPrice, maxPrice),
+    maxSalePrice: maxPrice,
+    totalStock: row.total_stock,
+    lowStockLimit: row.low_stock_limit,
+    active: row.active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
 // Fast POS Scanner Lookup by Barcode (matches product barcode directly)
 router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
   try {
+    await ensureProductAndSettingsColumns();
     const barcode = req.params.barcode.trim();
     const [result, settings] = await Promise.all([
       pgClient.query(
-        `SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, COALESCE(p.size, '42') as size,
-                p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
-                p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
-                p.custom_min_margin, p.custom_max_margin,
-                p.sale_price, p.min_sale_price, p.max_sale_price,
-                p.total_stock, COALESCE(p.low_stock_limit, 5) as low_stock_limit, p.active
+        `SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode,
+                p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price,
+                COALESCE(p.selling_price, 0) as selling_price,
+                COALESCE(p.min_price, 0) as min_price,
+                COALESCE(p.max_price, 0) as max_price,
+                p.total_stock, COALESCE(p.low_stock_limit, 5) as low_stock_limit, p.active, p.created_at, p.updated_at
          FROM products p
          WHERE (p.barcode = $1 OR LOWER(p.sku) = LOWER($1) OR LOWER(COALESCE(p.article, '')) = LOWER($1)) AND p.active = true
          LIMIT 1`,
@@ -413,56 +401,7 @@ router.get('/lookup/:barcode', requireAuth, async (req, res: Response) => {
       return res.status(404).json({ error: `Product with barcode or SKU "${barcode}" not found.` });
     }
 
-    const row: any = result.rows[0];
-    const costPrice = Math.round(parseFloat(row.cost_price) || 0);
-    const marginType = (row.margin_type || 'FIXED').toUpperCase();
-    const isFixed = marginType === 'FIXED';
-
-    // Prioritize saved product prices. Only calculate default if not yet saved in database.
-    const salePrice = row.sale_price !== null && row.sale_price !== undefined
-      ? Math.round(Number(row.sale_price))
-      : (isFixed ? Math.round(costPrice * (1 + settings.fixedProfitMargin / 100)) : null);
-
-    const minSalePrice = row.min_sale_price !== null && row.min_sale_price !== undefined
-      ? Math.round(Number(row.min_sale_price))
-      : (isFixed ? (salePrice || costPrice) : Math.round(costPrice * (1 + settings.minProfitMargin / 100)));
-
-    const maxSalePrice = row.max_sale_price !== null && row.max_sale_price !== undefined
-      ? Math.round(Number(row.max_sale_price))
-      : (isFixed ? (salePrice || costPrice) : Math.round(costPrice * (1 + settings.maxProfitMargin / 100)));
-
-    const product = {
-      id: row.id,
-      name: row.name,
-      brand: row.brand || 'Local',
-      brandName: row.brand || 'Local',
-      brandLogo: '',
-      category: row.category || 'Casual Shoes',
-      categoryName: row.category || 'Casual Shoes',
-      sku: row.sku,
-      article: row.article || '',
-      size: row.size || '42',
-      barcode: row.barcode,
-      primaryImageUrl: row.primary_image_url,
-      description: row.description,
-      costPrice,
-      marginType,
-      profitCalculationMethod: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
-      profit_calculation_method: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
-      profitMargin: row.profit_margin !== null && row.profit_margin !== undefined ? parseFloat(row.profit_margin) : null,
-      profitAmount: row.profit_amount !== null && row.profit_amount !== undefined ? parseFloat(row.profit_amount) : null,
-      customMinMargin: row.custom_min_margin ? parseFloat(row.custom_min_margin) : null,
-      customMaxMargin: row.custom_max_margin ? parseFloat(row.custom_max_margin) : null,
-      salePrice,
-      maxSalePrice,
-      minSalePrice,
-      totalStock: row.total_stock,
-      lowStockLimit: row.low_stock_limit,
-      active: row.active,
-      sizes: [],
-      colors: [],
-    };
-
+    const product = mapProductRow(result.rows[0], settings);
     res.json({ product });
   } catch (err: any) {
     res.status(500).json({ error: 'Lookup failed: ' + err.message });
@@ -476,11 +415,11 @@ router.get('/', requireAuth, async (req, res: Response) => {
     const { search, brand, category, brandId, categoryId, lowStockOnly, limit } = req.query;
 
     let query = `
-      SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode, COALESCE(p.size, '42') as size,
-             p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price, 
-             p.margin_type, p.profit_calculation_method, p.profit_margin, p.profit_amount,
-             p.custom_min_margin, p.custom_max_margin,
-             p.sale_price, p.min_sale_price, p.max_sale_price,
+      SELECT p.id, p.name, p.brand, p.category, p.sku, p.article, p.barcode,
+             p.primary_image_url, p.description, COALESCE(p.cost_price, 0) as cost_price,
+             COALESCE(p.selling_price, 0) as selling_price,
+             COALESCE(p.min_price, 0) as min_price,
+             COALESCE(p.max_price, 0) as max_price,
              p.total_stock, COALESCE(p.low_stock_limit, 5) as low_stock_limit, p.active, p.created_at, p.updated_at
       FROM products p
       WHERE 1=1
@@ -519,58 +458,7 @@ router.get('/', requireAuth, async (req, res: Response) => {
       getCompanyPricingSettings(),
     ]);
 
-    const products = result.rows.map((row: any) => {
-      const cost = Math.round(parseFloat(row.cost_price) || 0);
-      const marginType = (row.margin_type || 'FIXED').toUpperCase();
-      const isFixed = marginType === 'FIXED';
-
-      const salePrice = row.sale_price !== null && row.sale_price !== undefined
-        ? Math.round(Number(row.sale_price))
-        : (isFixed ? Math.round(cost * (1 + settings.fixedProfitMargin / 100)) : null);
-
-      const minSalePrice = row.min_sale_price !== null && row.min_sale_price !== undefined
-        ? Math.round(Number(row.min_sale_price))
-        : (isFixed ? (salePrice || cost) : Math.round(cost * (1 + settings.minProfitMargin / 100)));
-
-      const maxSalePrice = row.max_sale_price !== null && row.max_sale_price !== undefined
-        ? Math.round(Number(row.max_sale_price))
-        : (isFixed ? (salePrice || cost) : Math.round(cost * (1 + settings.maxProfitMargin / 100)));
-
-      return {
-        id: row.id,
-        name: row.name,
-        brand: row.brand || 'Local',
-        brandName: row.brand || 'Local',
-        brandLogo: '',
-        category: row.category || 'Casual Shoes',
-        categoryName: row.category || 'Casual Shoes',
-        sku: row.sku,
-        article: row.article || '',
-        size: row.size || '42',
-        barcode: row.barcode,
-        primaryImageUrl: row.primary_image_url,
-        description: row.description,
-        costPrice: cost,
-        marginType,
-        profitCalculationMethod: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
-        profit_calculation_method: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
-        profitMargin: row.profit_margin !== null && row.profit_margin !== undefined ? parseFloat(row.profit_margin) : null,
-        profitAmount: row.profit_amount !== null && row.profit_amount !== undefined ? parseFloat(row.profit_amount) : null,
-        customMinMargin: row.custom_min_margin ? parseFloat(row.custom_min_margin) : null,
-        customMaxMargin: row.custom_max_margin ? parseFloat(row.custom_max_margin) : null,
-        salePrice,
-        maxSalePrice,
-        minSalePrice,
-        totalStock: row.total_stock,
-        lowStockLimit: row.low_stock_limit,
-        active: row.active,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        sizes: [],
-        colors: [],
-      };
-    });
-
+    const products = result.rows.map((row: any) => mapProductRow(row, settings));
     res.json({ products });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch products: ' + err.message });
@@ -580,6 +468,7 @@ router.get('/', requireAuth, async (req, res: Response) => {
 // Single Product Details
 router.get('/:id', requireAuth, async (req, res: Response) => {
   try {
+    await ensureProductAndSettingsColumns();
     const id = parseInt(req.params.id, 10);
     const [result, settings] = await Promise.all([
       pgClient.query(
@@ -595,57 +484,8 @@ router.get('/:id', requireAuth, async (req, res: Response) => {
       return res.status(404).json({ error: 'Product not found.' });
     }
 
-    const row: any = result.rows[0];
-    const cost = Math.round(parseFloat(row.cost_price) || 0);
-    const marginType = (row.margin_type || 'FIXED').toUpperCase();
-    const isFixed = marginType === 'FIXED';
-
-    const salePrice = row.sale_price !== null && row.sale_price !== undefined
-      ? Math.round(Number(row.sale_price))
-      : (isFixed ? Math.round(cost * (1 + settings.fixedProfitMargin / 100)) : null);
-
-    const minSalePrice = row.min_sale_price !== null && row.min_sale_price !== undefined
-      ? Math.round(Number(row.min_sale_price))
-      : (isFixed ? (salePrice || cost) : Math.round(cost * (1 + settings.minProfitMargin / 100)));
-
-    const maxSalePrice = row.max_sale_price !== null && row.max_sale_price !== undefined
-      ? Math.round(Number(row.max_sale_price))
-      : (isFixed ? (salePrice || cost) : Math.round(cost * (1 + settings.maxProfitMargin / 100)));
-
     res.json({
-      product: {
-        id: row.id,
-        name: row.name,
-        brand: row.brand || 'Local',
-        brandName: row.brand || 'Local',
-        brandLogo: '',
-        category: row.category || 'Casual Shoes',
-        categoryName: row.category || 'Casual Shoes',
-        sku: row.sku,
-        article: row.article || '',
-        size: row.size || '42',
-        barcode: row.barcode,
-        primaryImageUrl: row.primary_image_url,
-        description: row.description,
-        costPrice: cost,
-        marginType,
-        profitCalculationMethod: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
-        profit_calculation_method: (row.profit_calculation_method || 'FIXED_AMOUNT').toUpperCase(),
-        profitMargin: row.profit_margin !== null && row.profit_margin !== undefined ? parseFloat(row.profit_margin) : null,
-        profitAmount: row.profit_amount !== null && row.profit_amount !== undefined ? parseFloat(row.profit_amount) : null,
-        customMinMargin: row.custom_min_margin ? parseFloat(row.custom_min_margin) : null,
-        customMaxMargin: row.custom_max_margin ? parseFloat(row.custom_max_margin) : null,
-        salePrice,
-        maxSalePrice,
-        minSalePrice,
-        totalStock: row.total_stock,
-        lowStockLimit: row.low_stock_limit,
-        active: row.active,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        sizes: [],
-        colors: [],
-      },
+      product: mapProductRow(result.rows[0], settings),
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch product: ' + err.message });
@@ -655,6 +495,7 @@ router.get('/:id', requireAuth, async (req, res: Response) => {
 // Create Product (Admin Only) - 1 Product = 1 SKU = 1 Barcode
 router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await ensureProductAndSettingsColumns();
     const {
       name,
       brand,
@@ -670,22 +511,16 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       description,
       costPrice,
       cost_price,
-      marginType,
-      margin_type,
-      profitCalculationMethod,
-      profit_calculation_method,
-      profitMargin,
-      profit_margin,
-      profitAmount,
-      profit_amount,
-      customMinMargin,
-      custom_min_margin,
-      customMaxMargin,
-      custom_max_margin,
+      sellingPrice,
+      selling_price,
       salePrice,
       sale_price,
+      minPrice,
+      min_price,
       minSalePrice,
       min_sale_price,
+      maxPrice,
+      max_price,
       maxSalePrice,
       max_sale_price,
       totalStock = 0,
@@ -699,61 +534,35 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
     const cleanArticle = article.trim().toUpperCase();
     const cleanName = (name && name.trim()) ? name.trim() : cleanArticle;
 
-    const rawCost = costPrice !== undefined && costPrice !== null && costPrice !== ''
-      ? costPrice
-      : cost_price;
+    const settings = await getCompanyPricingSettings();
 
-    if (rawCost === undefined || rawCost === '' || Number(rawCost) < 0) {
-      return res.status(400).json({ error: 'Valid cost price is required.' });
+    const rawCost = costPrice ?? cost_price;
+    const rawSelling = sellingPrice ?? selling_price ?? salePrice ?? sale_price;
+    const rawMin = minPrice ?? min_price ?? minSalePrice ?? min_sale_price;
+    const rawMax = maxPrice ?? max_price ?? maxSalePrice ?? max_sale_price;
+
+    // Validate with strict Zod schema based on store's locked pricing policy
+    const validation = validateAndNormalizeProductPricing({
+      pricingPolicy: settings.pricingPolicy,
+      costPrice: rawCost,
+      sellingPrice: rawSelling,
+      minPrice: rawMin,
+      maxPrice: rawMax,
+    });
+
+    if (!validation.success || !validation.data) {
+      return res.status(400).json({
+        error: validation.errors.general || 'Invalid product pricing.',
+        fieldErrors: validation.errors,
+      });
     }
-    const finalCostPrice = Math.round(Number(rawCost));
 
-    const [settings] = await Promise.all([
-      getCompanyPricingSettings(),
-    ]);
-
-    // Pricing policy & integer price handling
-    const rawMarginType = String(marginType || margin_type || (settings.pricingMode === 'FIXED' ? 'FIXED' : 'NEGOTIABLE')).toUpperCase();
-    const finalMarginType = rawMarginType === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
-    const rawCalcMethod = String(profitCalculationMethod || profit_calculation_method || 'FIXED_AMOUNT').toUpperCase();
-    const finalCalcMethod = rawCalcMethod === 'PROFIT_MARGIN' ? 'PROFIT_MARGIN' : 'FIXED_AMOUNT';
-    const finalProfitMargin = profitMargin !== undefined && profitMargin !== null && profitMargin !== ''
-      ? parseFloat(String(profitMargin))
-      : (profit_margin !== undefined && profit_margin !== null && profit_margin !== '' ? parseFloat(String(profit_margin)) : null);
-    const finalProfitAmount = profitAmount !== undefined && profitAmount !== null && profitAmount !== ''
-      ? parseFloat(String(profitAmount))
-      : (profit_amount !== undefined && profit_amount !== null && profit_amount !== '' ? parseFloat(String(profit_amount)) : null);
-    const finalCustomMinMargin = customMinMargin !== undefined && customMinMargin !== null && customMinMargin !== ''
-      ? parseFloat(String(customMinMargin))
-      : (custom_min_margin ? parseFloat(String(custom_min_margin)) : null);
-    const finalCustomMaxMargin = customMaxMargin !== undefined && customMaxMargin !== null && customMaxMargin !== ''
-      ? parseFloat(String(customMaxMargin))
-      : (custom_max_margin ? parseFloat(String(custom_max_margin)) : null);
-
-    let finalSalePrice: number = 0;
-    let finalMinSalePrice: number = 0;
-    let finalMaxSalePrice: number = 0;
-
-    if (finalMarginType === 'FIXED') {
-      const rawSale = salePrice !== undefined && salePrice !== null && salePrice !== '' ? salePrice : sale_price;
-      finalSalePrice = rawSale !== undefined && rawSale !== null && rawSale !== ''
-        ? Math.max(0, Math.round(Number(rawSale)))
-        : Math.max(0, Math.round(finalCostPrice * (1 + (settings.fixedProfitMargin || 30) / 100)));
-      finalMinSalePrice = finalSalePrice;
-      finalMaxSalePrice = finalSalePrice;
-    } else {
-      const rawMin = minSalePrice !== undefined && minSalePrice !== null && minSalePrice !== '' ? minSalePrice : min_sale_price;
-      const rawMax = maxSalePrice !== undefined && maxSalePrice !== null && maxSalePrice !== '' ? maxSalePrice : max_sale_price;
-      const parsedMin = rawMin !== undefined && rawMin !== null && rawMin !== ''
-        ? Math.max(0, Math.round(Number(rawMin)))
-        : Math.max(0, Math.round(finalCostPrice * (1 + (finalCustomMinMargin ?? settings.minProfitMargin ?? 15) / 100)));
-      const parsedMax = rawMax !== undefined && rawMax !== null && rawMax !== ''
-        ? Math.max(parsedMin, Math.round(Number(rawMax)))
-        : Math.max(parsedMin, Math.round(finalCostPrice * (1 + (finalCustomMaxMargin ?? settings.maxProfitMargin ?? 30) / 100)));
-      finalMinSalePrice = parsedMin;
-      finalMaxSalePrice = parsedMax;
-      finalSalePrice = parsedMax;
-    }
+    const {
+      costPrice: finalCostPrice,
+      sellingPrice: finalSellingPrice,
+      minPrice: finalMinPrice,
+      maxPrice: finalMaxPrice,
+    } = validation.data;
 
     // Brand and Category strings
     const finalBrand = (brand || brandName || (typeof brandId === 'string' ? brandId : '') || '').trim() || 'Local';
@@ -766,20 +575,16 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       return res.status(400).json({ error: 'Product ID limit of 99,999 reached for 5-digit barcode generation.' });
     }
 
-    // Size / variant handling (e.g., '42', '40', '41', etc.)
-    const rawSize = req.body.size || req.body.sizeVariant || req.body.variant || '42';
-    const cleanSize = String(rawSize).trim().toUpperCase();
-
     // Automated SKU Backend Handling:
-    // Format: ${brandCode}-${articleNumber}-${size} (e.g., DAF-SF-0012-42)
-    const autoSku = generateSku(brandPrefix, cleanArticle, cleanSize);
+    // Format: ${brandCode}-${articleNumber}-${predictedId}
+    const autoSku = generateSku(brandPrefix, cleanArticle, predictedId);
     let finalSku = (sku && sku.trim()) ? sku.trim().toUpperCase() : autoSku;
 
     // Check SKU uniqueness; if auto-generated collision occurs, append product ID for safe isolation
     const skuCheck = await pgClient.query('SELECT id FROM products WHERE LOWER(sku) = LOWER($1)', [finalSku]);
     if (skuCheck.rows.length > 0) {
       if (!sku || !sku.trim()) {
-        finalSku = `${brandPrefix}-${cleanArticle}-${cleanSize}-${predictedId}`;
+        finalSku = `${brandPrefix}-${cleanArticle}-${predictedId}`;
       } else {
         return res.status(400).json({ error: `A product with SKU "${finalSku}" already exists.` });
       }
@@ -830,16 +635,15 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
       finalLowStockLimit = setRes.rows[0]?.low_stock_limit || 5;
     }
 
-    // ATOMIC TRANSACTION: Create product with single cost_price and initial stock movement
+    // ATOMIC TRANSACTION: Create product with refined pricing fields and initial stock movement
     await pgClient.query('BEGIN');
     try {
       const productRes = await pgClient.query<{ id: number }>(
         `INSERT INTO products (
-          name, brand, category, sku, article, size, barcode, primary_image_url, 
-          description, cost_price, margin_type, profit_calculation_method, profit_margin, profit_amount,
-          custom_min_margin, custom_max_margin,
-          sale_price, min_sale_price, max_sale_price, total_stock, low_stock_limit, active
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, true)
+          name, brand, category, sku, article, barcode, primary_image_url,
+          description, cost_price, selling_price, min_price, max_price,
+          total_stock, low_stock_limit, active
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, true)
         RETURNING id`,
         [
           cleanName,
@@ -847,20 +651,13 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
           finalCategory,
           finalSku,
           cleanArticle,
-          cleanSize,
           finalBarcode,
           primaryImageUrl || '',
           description || '',
           finalCostPrice,
-          finalMarginType,
-          finalCalcMethod,
-          finalProfitMargin,
-          finalProfitAmount,
-          finalCustomMinMargin,
-          finalCustomMaxMargin,
-          finalSalePrice,
-          finalMinSalePrice,
-          finalMaxSalePrice,
+          finalSellingPrice,
+          finalMinPrice,
+          finalMaxPrice,
           physicalStock,
           finalLowStockLimit,
         ]
@@ -909,6 +706,7 @@ router.post('/', requireAuth, requireAdmin, async (req: AuthenticatedRequest, re
 // Update Product (Admin Only)
 router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    await ensureProductAndSettingsColumns();
     const id = parseInt(req.params.id, 10);
     const {
       name,
@@ -916,8 +714,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
       category,
       brandName,
       categoryName,
-      brandId,
-      categoryId,
       article,
       sku,
       barcode,
@@ -925,22 +721,16 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
       description,
       costPrice,
       cost_price,
-      marginType,
-      margin_type,
-      profitCalculationMethod,
-      profit_calculation_method,
-      profitMargin,
-      profit_margin,
-      profitAmount,
-      profit_amount,
-      customMinMargin,
-      custom_min_margin,
-      customMaxMargin,
-      custom_max_margin,
+      sellingPrice,
+      selling_price,
       salePrice,
       sale_price,
+      minPrice,
+      min_price,
       minSalePrice,
       min_sale_price,
+      maxPrice,
+      max_price,
       maxSalePrice,
       max_sale_price,
       totalStock,
@@ -953,6 +743,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
       return res.status(404).json({ error: 'Product not found.' });
     }
     const current: any = currentRes.rows[0];
+    const settings = await getCompanyPricingSettings();
 
     const finalBrand = brand !== undefined
       ? (String(brand).trim() || 'Local')
@@ -1006,78 +797,43 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
     }
 
     const updatedStock = totalStock !== undefined ? parseInt(String(totalStock), 10) : current.total_stock;
-    const rawCost = costPrice !== undefined && costPrice !== null && costPrice !== ''
-      ? costPrice
-      : cost_price;
 
-    const finalCostPrice = rawCost !== undefined && rawCost !== ''
-      ? Math.round(Number(rawCost))
-      : Math.round(Number(current.cost_price || 0));
+    const rawCost = costPrice ?? cost_price ?? current.cost_price ?? 0;
+    const rawSelling = sellingPrice ?? selling_price ?? salePrice ?? sale_price ?? current.selling_price ?? 0;
+    const rawMin = minPrice ?? min_price ?? minSalePrice ?? min_sale_price ?? current.min_price ?? rawSelling;
+    const rawMax = maxPrice ?? max_price ?? maxSalePrice ?? max_sale_price ?? current.max_price ?? rawSelling;
 
-    // Pricing policy & integer price handling
-    const rawMarginType = marginType !== undefined ? marginType : (margin_type !== undefined ? margin_type : current.margin_type);
-    const finalMarginType = String(rawMarginType || 'FIXED').toUpperCase() === 'NEGOTIABLE' ? 'NEGOTIABLE' : 'FIXED';
+    // Validate with strict Zod schema based on store's locked pricing policy
+    const validation = validateAndNormalizeProductPricing({
+      pricingPolicy: settings.pricingPolicy,
+      costPrice: rawCost,
+      sellingPrice: rawSelling,
+      minPrice: rawMin,
+      maxPrice: rawMax,
+    });
 
-    const rawCalcMethod = profitCalculationMethod !== undefined
-      ? profitCalculationMethod
-      : (profit_calculation_method !== undefined ? profit_calculation_method : current.profit_calculation_method);
-    const finalCalcMethod = String(rawCalcMethod || 'FIXED_AMOUNT').toUpperCase() === 'PROFIT_MARGIN' ? 'PROFIT_MARGIN' : 'FIXED_AMOUNT';
-
-    const finalProfitMargin = profitMargin !== undefined
-      ? (profitMargin !== null && profitMargin !== '' ? parseFloat(String(profitMargin)) : null)
-      : (profit_margin !== undefined ? (profit_margin !== null && profit_margin !== '' ? parseFloat(String(profit_margin)) : null) : current.profit_margin);
-
-    const finalProfitAmount = profitAmount !== undefined
-      ? (profitAmount !== null && profitAmount !== '' ? parseFloat(String(profitAmount)) : null)
-      : (profit_amount !== undefined ? (profit_amount !== null && profit_amount !== '' ? parseFloat(String(profit_amount)) : null) : current.profit_amount);
-
-    const finalCustomMinMargin = customMinMargin !== undefined
-      ? (customMinMargin !== null && customMinMargin !== '' ? parseFloat(String(customMinMargin)) : null)
-      : (custom_min_margin !== undefined ? (custom_min_margin !== null && custom_min_margin !== '' ? parseFloat(String(custom_min_margin)) : null) : current.custom_min_margin);
-
-    const finalCustomMaxMargin = customMaxMargin !== undefined
-      ? (customMaxMargin !== null && customMaxMargin !== '' ? parseFloat(String(customMaxMargin)) : null)
-      : (custom_max_margin !== undefined ? (custom_max_margin !== null && custom_max_margin !== '' ? parseFloat(String(custom_max_margin)) : null) : current.custom_max_margin);
-
-    let finalSalePrice: number | null = current.sale_price !== null ? Math.round(Number(current.sale_price)) : null;
-    let finalMinSalePrice: number | null = current.min_sale_price !== null ? Math.round(Number(current.min_sale_price)) : null;
-    let finalMaxSalePrice: number | null = current.max_sale_price !== null ? Math.round(Number(current.max_sale_price)) : null;
-
-    if (finalMarginType === 'FIXED') {
-      const rawSale = salePrice !== undefined && salePrice !== null && salePrice !== ''
-        ? salePrice
-        : (sale_price !== undefined && sale_price !== null && sale_price !== '' ? sale_price : finalSalePrice);
-      if (rawSale !== undefined && rawSale !== null && rawSale !== '') {
-        finalSalePrice = Math.max(0, Math.round(Number(rawSale)));
-        finalMinSalePrice = finalSalePrice;
-        finalMaxSalePrice = finalSalePrice;
-      }
-    } else {
-      const rawMin = minSalePrice !== undefined && minSalePrice !== null && minSalePrice !== ''
-        ? minSalePrice
-        : (min_sale_price !== undefined && min_sale_price !== null && min_sale_price !== '' ? min_sale_price : finalMinSalePrice);
-      const rawMax = maxSalePrice !== undefined && maxSalePrice !== null && maxSalePrice !== ''
-        ? maxSalePrice
-        : (max_sale_price !== undefined && max_sale_price !== null && max_sale_price !== '' ? max_sale_price : finalMaxSalePrice);
-
-      if (rawMin !== undefined && rawMin !== null && rawMin !== '') {
-        finalMinSalePrice = Math.max(0, Math.round(Number(rawMin)));
-      }
-      if (rawMax !== undefined && rawMax !== null && rawMax !== '') {
-        finalMaxSalePrice = Math.max(finalMinSalePrice || 0, Math.round(Number(rawMax)));
-      }
-      finalSalePrice = finalMaxSalePrice;
+    if (!validation.success || !validation.data) {
+      return res.status(400).json({
+        error: validation.errors.general || 'Invalid product pricing.',
+        fieldErrors: validation.errors,
+      });
     }
 
+    const {
+      costPrice: finalCostPrice,
+      sellingPrice: finalSellingPrice,
+      minPrice: finalMinPrice,
+      maxPrice: finalMaxPrice,
+    } = validation.data;
+
     await pgClient.query(
-      `UPDATE products SET 
+      `UPDATE products SET
         name = $1, brand = $2, category = $3, sku = $4, article = $5, barcode = $6,
         primary_image_url = $7, description = $8, cost_price = $9, total_stock = $10,
-        low_stock_limit = $11, active = $12, margin_type = $13, custom_min_margin = $14,
-        custom_max_margin = $15, sale_price = $16, min_sale_price = $17, max_sale_price = $18,
-        profit_calculation_method = $19, profit_margin = $20, profit_amount = $21,
+        low_stock_limit = $11, active = $12,
+        selling_price = $13, min_price = $14, max_price = $15,
         updated_at = NOW()
-      WHERE id = $22`,
+      WHERE id = $16`,
       [
         finalName,
         finalBrand,
@@ -1091,15 +847,9 @@ router.put('/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, 
         updatedStock,
         lowStockLimit !== undefined ? parseInt(lowStockLimit, 10) : current.low_stock_limit,
         active !== undefined ? Boolean(active) : current.active,
-        finalMarginType,
-        finalCustomMinMargin,
-        finalCustomMaxMargin,
-        finalSalePrice,
-        finalMinSalePrice,
-        finalMaxSalePrice,
-        finalCalcMethod,
-        finalProfitMargin,
-        finalProfitAmount,
+        finalSellingPrice,
+        finalMinPrice,
+        finalMaxPrice,
         id,
       ]
     );

@@ -93,25 +93,22 @@ router.post('/checkout', requireAuth, async (req: AuthenticatedRequest, res: Res
   const user = req.user!;
   let verifiedOverrideAdminId: number | null = null;
 
-  // 1. Min Price Validation (Minimum price is automatically calculated in real time: Cost Price + Minimum Profit Margin)
-  const settingsRes = await pgClient.query<{ min_profit_margin: string; pricing_mode: string; fixed_profit_margin: string }>(
-    'SELECT min_profit_margin, pricing_mode, fixed_profit_margin FROM company_settings LIMIT 1'
+  // 1. Min Price Validation using store's locked Pricing Policy and product's saved prices
+  const settingsRes = await pgClient.query<{ pricing_mode: string }>(
+    'SELECT pricing_mode FROM company_settings LIMIT 1'
   );
-  const minMarginPercent = parseFloat(settingsRes.rows[0]?.min_profit_margin ?? '15') || 15;
-  const isFixedMode = (settingsRes.rows[0]?.pricing_mode || '').toUpperCase() === 'FIXED';
-  const fixedMarginPercent = parseFloat(settingsRes.rows[0]?.fixed_profit_margin ?? '30') || 30;
+  const isFixedMode = String(settingsRes.rows[0]?.pricing_mode || 'FIXED').toUpperCase() === 'FIXED';
 
   for (const item of items) {
     const prodRes = await pgClient.query<{
       cost_price: string;
       name: string;
       article: string;
-      sale_price: number | null;
-      min_sale_price: number | null;
-      max_sale_price: number | null;
-      margin_type: string | null;
+      selling_price: number | null;
+      min_price: number | null;
+      max_price: number | null;
     }>(
-      'SELECT COALESCE(cost_price, 0) as cost_price, name, article, sale_price, min_sale_price, max_sale_price, margin_type FROM products WHERE id = $1',
+      'SELECT COALESCE(cost_price, 0) as cost_price, name, article, COALESCE(selling_price, 0) as selling_price, COALESCE(min_price, 0) as min_price, COALESCE(max_price, 0) as max_price FROM products WHERE id = $1',
       [item.productId]
     );
 
@@ -123,19 +120,17 @@ router.post('/checkout', requireAuth, async (req: AuthenticatedRequest, res: Res
     const costPrice = Math.round(parseFloat(prod.cost_price || '0'));
     const prodIdentifier = prod.article || prod.name;
     const effectiveUnitPrice = Math.round(parseFloat(item.unitPrice));
-    const productPolicy = String(prod.margin_type || (prod.sale_price ? 'FIXED' : 'NEGOTIABLE')).toUpperCase();
-    const isFixedProduct = productPolicy === 'FIXED';
 
     // Determine min allowed selling price from saved product prices
     let minAllowedPrice = 0;
-    if (isFixedProduct) {
-      minAllowedPrice = prod.sale_price !== null && prod.sale_price !== undefined
-        ? Math.round(Number(prod.sale_price))
-        : (costPrice > 0 ? Math.round(costPrice * (1 + fixedMarginPercent / 100)) : 0);
+    if (isFixedMode) {
+      minAllowedPrice = prod.selling_price && prod.selling_price > 0
+        ? Math.round(Number(prod.selling_price))
+        : costPrice;
     } else {
-      minAllowedPrice = prod.min_sale_price !== null && prod.min_sale_price !== undefined
-        ? Math.round(Number(prod.min_sale_price))
-        : (costPrice > 0 ? Math.round(costPrice * (1 + minMarginPercent / 100)) : 0);
+      minAllowedPrice = prod.min_price && prod.min_price > 0
+        ? Math.round(Number(prod.min_price))
+        : (prod.selling_price && prod.selling_price > 0 ? Math.round(Number(prod.selling_price)) : costPrice);
     }
 
     if (effectiveUnitPrice < minAllowedPrice) {
@@ -567,41 +562,6 @@ router.get('/sales/:id', requireAuth, async (req, res: Response) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch sale details: ' + err.message });
-  }
-});
-
-// GET /api/pos/carton-packs - List available carton packing configurations from carton_packs table
-router.get('/carton-packs', async (_req, res) => {
-  try {
-    const packsRes = await pgClient.query<{
-      id: number;
-      pack_name: string;
-      pairs_per_carton: number;
-      is_default: boolean;
-    }>(
-      `SELECT id, pack_name, pairs_per_carton, is_default FROM carton_packs ORDER BY pairs_per_carton ASC`
-    );
-
-    if (packsRes.rows.length === 0) {
-      const fallbackPacks = [
-        { id: 1, pack_name: 'Half Carton (6 Pairs)', pairs_per_carton: 6, is_default: false },
-        { id: 2, pack_name: 'Standard Carton (12 Pairs)', pairs_per_carton: 12, is_default: true },
-        { id: 3, pack_name: 'Wholesale Pack (24 Pairs)', pairs_per_carton: 24, is_default: false },
-        { id: 4, pack_name: 'Master Carton (36 Pairs)', pairs_per_carton: 36, is_default: false },
-      ];
-      return res.json({ cartonPacks: fallbackPacks });
-    }
-
-    res.json({ cartonPacks: packsRes.rows });
-  } catch (err: any) {
-    // Graceful fallback to default pack configurations
-    const fallbackPacks = [
-      { id: 1, pack_name: 'Half Carton (6 Pairs)', pairs_per_carton: 6, is_default: false },
-      { id: 2, pack_name: 'Standard Carton (12 Pairs)', pairs_per_carton: 12, is_default: true },
-      { id: 3, pack_name: 'Wholesale Pack (24 Pairs)', pairs_per_carton: 24, is_default: false },
-      { id: 4, pack_name: 'Master Carton (36 Pairs)', pairs_per_carton: 36, is_default: false },
-    ];
-    res.json({ cartonPacks: fallbackPacks });
   }
 });
 

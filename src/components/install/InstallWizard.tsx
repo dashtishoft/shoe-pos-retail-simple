@@ -353,6 +353,7 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
         invoice_footer: invoiceFooter,
         low_stock_limit: lowStockLimit,
         pricing_mode: pricingMode,
+        pricingPolicy: pricingMode,
       });
       setCurrentStep(4);
     } catch (err: any) {
@@ -526,6 +527,12 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
             currency_name: currencyName,
             barcode_prefix: barcodePrefix,
             invoice_prefix: invoicePrefix,
+            pricing_mode: pricingMode,
+            pricingPolicy: pricingMode,
+            pricing_policy_locked: true,
+            pricingPolicyLocked: true,
+            is_installed: true,
+            isInstalled: true,
           },
         });
       }, 1500);
@@ -1300,15 +1307,16 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
                   </div>
 
                   <p className="text-xs text-slate-500 font-normal leading-relaxed">
-                    Select your retail pricing rule. This setting is <strong>permanently locked</strong> after initial setup to guarantee transaction audit integrity. Default profit margins and cash amounts can be adjusted later in System Settings.
+                    Select your retail pricing rule. Once chosen and the store is initialized, this setting is <strong>permanently locked (read-only)</strong> in all settings menus to guarantee transaction audit integrity.
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     {/* Option 1: Fixed Price */}
                     <button
                       type="button"
+                      disabled={Boolean(systemInfo?.isInstalled || isAlreadyInstalled)}
                       onClick={() => setPricingMode('FIXED')}
-                      className={`p-4 rounded-xl text-left transition-all border cursor-pointer relative ${
+                      className={`p-4 rounded-xl text-left transition-all border cursor-pointer relative disabled:opacity-60 disabled:cursor-not-allowed ${
                         pricingMode === 'FIXED'
                           ? 'bg-purple-50/90 border-purple-500 shadow-sm ring-2 ring-purple-400/30'
                           : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
@@ -1324,7 +1332,7 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
                           <span className={`text-xs font-bold ${
                             pricingMode === 'FIXED' ? 'text-purple-950 font-black' : 'text-slate-800'
                           }`}>
-                            1. Fixed Price Mode
+                            1. Fixed Price Policy (FIXED)
                           </span>
                         </div>
                         {pricingMode === 'FIXED' && (
@@ -1334,7 +1342,7 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
                         )}
                       </div>
                       <p className="text-[11.5px] text-slate-600 leading-snug">
-                        Single non-negotiable retail price. Calculated strictly as <strong>Cost Price + Default Profit Margin (%) or Flat Amount ({currencySymbol})</strong>. No bargaining at POS counter.
+                        Single non-negotiable retail price. Product form displays one <strong>Price</strong> field (<code className="font-mono">sellingPrice = minPrice = maxPrice &ge; costPrice</code>). No bargaining at POS counter.
                       </p>
                       <div className="mt-2 text-[10px] font-mono text-purple-700 bg-purple-100/70 px-2 py-0.5 rounded inline-block">
                         Best for: Brand stores, fixed retail &amp; boutiques
@@ -1344,8 +1352,9 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
                     {/* Option 2: Negotiable Price */}
                     <button
                       type="button"
+                      disabled={Boolean(systemInfo?.isInstalled || isAlreadyInstalled)}
                       onClick={() => setPricingMode('NEGOTIABLE')}
-                      className={`p-4 rounded-xl text-left transition-all border cursor-pointer relative ${
+                      className={`p-4 rounded-xl text-left transition-all border cursor-pointer relative disabled:opacity-60 disabled:cursor-not-allowed ${
                         pricingMode === 'NEGOTIABLE'
                           ? 'bg-indigo-50/90 border-indigo-500 shadow-sm ring-2 ring-indigo-400/30'
                           : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
@@ -1361,7 +1370,7 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
                           <span className={`text-xs font-bold ${
                             pricingMode === 'NEGOTIABLE' ? 'text-indigo-950 font-black' : 'text-slate-800'
                           }`}>
-                            2. Negotiable Price Mode
+                            2. Negotiable Price Policy (NEGOTIABLE)
                           </span>
                         </div>
                         {pricingMode === 'NEGOTIABLE' && (
@@ -1371,7 +1380,7 @@ export const InstallWizard: React.FC<InstallWizardProps> = ({
                         )}
                       </div>
                       <p className="text-[11.5px] text-slate-600 leading-snug">
-                        Two price levels: <strong>Minimum Floor Limit</strong> (Cost + Min Margin) &amp; <strong>Sticker Tag MRP</strong> (Cost + Max Margin). Cashiers negotiate within limits at POS checkout.
+                        Product form displays three mandatory fields: <strong>Cost Price</strong>, <strong>Min Selling Price</strong> (<code className="font-mono">&ge; costPrice</code>), and <strong>Max Selling Price</strong> (<code className="font-mono">&ge; minPrice</code>).
                       </p>
                       <div className="mt-2 text-[10px] font-mono text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded inline-block">
                         Best for: Wholesale &amp; traditional shoe markets

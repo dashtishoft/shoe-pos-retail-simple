@@ -567,16 +567,20 @@ export const Header: React.FC<HeaderProps> = ({
                         {/* Pricing Grid: Respects Fixed vs Negotiable Policy and Admin vs Cashier Authority */}
                         {(() => {
                           const rawPricingMode = String(
-                            prod.marginType ||
-                            prod.margin_type ||
-                            (prod.salePrice !== undefined && prod.salePrice !== null ? 'FIXED' : (companySettings?.pricing_mode || companySettings?.pricingMode || 'FIXED'))
+                            prod.pricingPolicy ||
+                            prod.pricing_mode ||
+                            companySettings?.pricingPolicy ||
+                            companySettings?.pricing_policy ||
+                            companySettings?.pricing_mode ||
+                            companySettings?.pricingMode ||
+                            'FIXED'
                           ).toUpperCase();
                           const isFixedPolicy = rawPricingMode === 'FIXED';
                           const isOwnerOrAdmin = String(currentUser?.role || '').toUpperCase() === 'ADMIN';
 
-                          const fixedSalePrice = getProductRetailPrice(prod, companySettings) || prod.maxSalePrice || prod.costPrice || 0;
-                          const minSalePrice = getProductMinFloorPrice(prod, companySettings) || prod.minSalePrice || 0;
-                          const maxSalePrice = getProductRetailPrice(prod, companySettings) || prod.maxSalePrice || 0;
+                          const fixedSalePrice = getProductRetailPrice(prod, companySettings) || prod.sellingPrice || prod.maxSalePrice || prod.costPrice || 0;
+                          const minSalePrice = getProductMinFloorPrice(prod, companySettings) || prod.minPrice || prod.minSalePrice || 0;
+                          const maxSalePrice = getProductRetailPrice(prod, companySettings) || prod.maxPrice || prod.maxSalePrice || 0;
                           const costPrice = prod.costPrice ?? prod.cost_price ?? 0;
 
                           if (isFixedPolicy) {
