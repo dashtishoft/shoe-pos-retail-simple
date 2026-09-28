@@ -200,6 +200,21 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ image }),
       }),
+    bulkImport: (body: { items: any[]; duplicateStrategy: 'MERGE' | 'OVERWRITE' | 'SKIP' }) =>
+      request<{
+        success: boolean;
+        message: string;
+        summary: {
+          createdCount: number;
+          mergedCount: number;
+          overwrittenCount: number;
+          skippedCount: number;
+          totalProcessed: number;
+        };
+      }>('/products/bulk-import', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
 
   // POS

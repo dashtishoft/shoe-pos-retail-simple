@@ -11,6 +11,8 @@ import {
 } from '../../utils/barcode.ts';
 import {
   parseBrandPrefix,
+  parseCategoryPrefix,
+  generateSuggestedArticle,
   generateSku,
   buildSkuInfo,
 } from '../../utils/sku.ts';
@@ -876,6 +878,379 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res: Response) => {
     res.json({ message: 'Product deleted successfully.' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to delete product: ' + err.message });
+  }
+});
+
+// Bulk CSV Import Products (Admin Only)
+// Supports duplicateStrategy: 'MERGE' | 'OVERWRITE' | 'SKIP'
+router.post('/bulk-import', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await ensureProductAndSettingsColumns();
+    const { items, duplicateStrategy = 'MERGE' } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'No product rows provided for import.' });
+    }
+
+    const settings = await getCompanyPricingSettings();
+    const settingsRes = await pgClient.query<{ barcode_prefix: string; low_stock_limit: number }>(
+      'SELECT barcode_prefix, low_stock_limit FROM company_settings LIMIT 1'
+    );
+    const rawPrefix = settingsRes.rows[0]?.barcode_prefix || '0108923';
+    const prefixCheck = validateBarcodePrefix(rawPrefix);
+    if (!prefixCheck.isValid) {
+      return res.status(400).json({
+        error: prefixCheck.error || 'Barcode prefix must be exactly 7 digits in Settings.',
+      });
+    }
+    const prefix = sanitizePrefix(rawPrefix);
+    const defaultLowStockLimit = settingsRes.rows[0]?.low_stock_limit || 5;
+
+    let createdCount = 0;
+    let mergedCount = 0;
+    let overwrittenCount = 0;
+    let skippedCount = 0;
+
+    await pgClient.query('BEGIN');
+    try {
+      for (const rawItem of items) {
+        const rowStrategy: 'MERGE' | 'OVERWRITE' | 'SKIP' =
+          rawItem.duplicateAction || duplicateStrategy || 'MERGE';
+
+        const rawBrand = String(rawItem.brand ?? rawItem.brandName ?? '').trim();
+        const finalBrand = rawBrand || 'Local';
+
+        const rawCategory = String(rawItem.category ?? rawItem.categoryName ?? '').trim();
+        const finalCategory = rawCategory || 'Casual Shoes';
+
+        const rawBarcode = String(rawItem.barcode ?? '').trim();
+        const rawArticle = String(rawItem.article ?? '').trim().toUpperCase();
+        const rawSku = String(rawItem.sku ?? '').trim().toUpperCase();
+
+        // Check if this row matches an existing product by barcode, article, or sku
+        let existingProduct: any = null;
+        if (rawBarcode) {
+          const byBarcode = await pgClient.query(
+            'SELECT * FROM products WHERE barcode = $1 LIMIT 1',
+            [rawBarcode]
+          );
+          if (byBarcode.rows.length > 0) existingProduct = byBarcode.rows[0];
+        }
+        if (!existingProduct && rawArticle) {
+          const byArticle = await pgClient.query(
+            'SELECT * FROM products WHERE LOWER(article) = LOWER($1) LIMIT 1',
+            [rawArticle]
+          );
+          if (byArticle.rows.length > 0) existingProduct = byArticle.rows[0];
+        }
+        if (!existingProduct && rawSku) {
+          const bySku = await pgClient.query(
+            'SELECT * FROM products WHERE LOWER(sku) = LOWER($1) LIMIT 1',
+            [rawSku]
+          );
+          if (bySku.rows.length > 0) existingProduct = bySku.rows[0];
+        }
+
+        // Resolve pricing
+        const rawCost = rawItem.cost_price ?? rawItem.costPrice ?? (existingProduct ? existingProduct.cost_price : 0);
+        const rawSelling =
+          rawItem.selling_price ??
+          rawItem.sellingPrice ??
+          rawItem.sale_price ??
+          rawItem.salePrice ??
+          (existingProduct ? existingProduct.selling_price : undefined);
+        const rawMin =
+          rawItem.min_price ??
+          rawItem.minPrice ??
+          rawItem.min_sale_price ??
+          rawItem.minSalePrice ??
+          (existingProduct ? existingProduct.min_price : undefined);
+        const rawMax =
+          rawItem.max_price ??
+          rawItem.maxPrice ??
+          rawItem.max_sale_price ??
+          rawItem.maxSalePrice ??
+          (existingProduct ? existingProduct.max_price : undefined);
+
+        const costNum = Number(rawCost) || 0;
+        let effSelling = rawSelling !== undefined && rawSelling !== '' ? Number(rawSelling) : undefined;
+        let effMin = rawMin !== undefined && rawMin !== '' ? Number(rawMin) : undefined;
+        let effMax = rawMax !== undefined && rawMax !== '' ? Number(rawMax) : undefined;
+
+        if (settings.pricingPolicy === 'FIXED') {
+          if (effSelling === undefined) {
+            effSelling = effMax ?? effMin ?? costNum;
+          }
+        } else {
+          if (effMin === undefined) {
+            effMin = effSelling ?? costNum;
+          }
+          if (effMax === undefined) {
+            effMax = effSelling ?? effMin ?? costNum;
+          }
+        }
+
+        const validation = validateAndNormalizeProductPricing({
+          pricingPolicy: settings.pricingPolicy,
+          costPrice: costNum,
+          sellingPrice: effSelling,
+          minPrice: effMin,
+          maxPrice: effMax,
+        });
+
+        if (!validation.success || !validation.data) {
+          throw new Error(
+            `Row (${rawArticle || rawBarcode || 'New Product'}): ${
+              validation.errors.general || 'Invalid pricing.'
+            }`
+          );
+        }
+
+        const {
+          costPrice: finalCostPrice,
+          sellingPrice: finalSellingPrice,
+          minPrice: finalMinPrice,
+          maxPrice: finalMaxPrice,
+        } = validation.data;
+
+        const importedStock = Math.max(
+          0,
+          parseInt(String(rawItem.total_stock ?? rawItem.totalStock ?? 0), 10) || 0
+        );
+        const importedLowStock =
+          rawItem.low_stock_limit !== undefined &&
+          rawItem.low_stock_limit !== null &&
+          String(rawItem.low_stock_limit).trim() !== ''
+            ? parseInt(String(rawItem.low_stock_limit), 10) || defaultLowStockLimit
+            : rawItem.lowStockLimit !== undefined &&
+              rawItem.lowStockLimit !== null &&
+              String(rawItem.lowStockLimit).trim() !== ''
+            ? parseInt(String(rawItem.lowStockLimit), 10) || defaultLowStockLimit
+            : defaultLowStockLimit;
+
+        const rawImageUrl = String(rawItem.primary_image_url ?? rawItem.primaryImageUrl ?? '').trim();
+        const rawDesc = String(rawItem.description ?? '').trim();
+
+        if (existingProduct) {
+          if (rowStrategy === 'SKIP') {
+            skippedCount++;
+            continue;
+          }
+
+          const prevStock = Number(existingProduct.total_stock) || 0;
+
+          if (rowStrategy === 'MERGE') {
+            const newStock = prevStock + importedStock;
+            const mergedName =
+              String(rawItem.name ?? '').trim() || existingProduct.name || existingProduct.article;
+            await pgClient.query(
+              `UPDATE products SET
+                name = $1,
+                brand = $2,
+                category = $3,
+                cost_price = $4,
+                selling_price = $5,
+                min_price = $6,
+                max_price = $7,
+                total_stock = $8,
+                low_stock_limit = $9,
+                primary_image_url = $10,
+                description = $11,
+                active = true,
+                updated_at = NOW()
+              WHERE id = $12`,
+              [
+                mergedName,
+                rawBrand ? finalBrand : existingProduct.brand,
+                rawCategory ? finalCategory : existingProduct.category,
+                finalCostPrice,
+                finalSellingPrice,
+                finalMinPrice,
+                finalMaxPrice,
+                newStock,
+                importedLowStock,
+                rawImageUrl || existingProduct.primary_image_url || '',
+                rawDesc || existingProduct.description || '',
+                existingProduct.id,
+              ]
+            );
+
+            if (importedStock > 0) {
+              await pgClient.query(
+                `INSERT INTO stock_movements (
+                  product_id, qty_change, prev_stock, new_stock, movement_type, reference_id, user_id, notes
+                ) VALUES ($1, $2, $3, $4, 'PURCHASE', 'CSV-IMPORT-MERGE', $5, 'CSV bulk import stock addition')`,
+                [existingProduct.id, importedStock, prevStock, newStock, req.user!.id]
+              );
+            }
+            mergedCount++;
+            continue;
+          }
+
+          if (rowStrategy === 'OVERWRITE') {
+            const finalArticle = rawArticle || existingProduct.article;
+            const finalName = String(rawItem.name ?? '').trim() || finalArticle;
+            await pgClient.query(
+              `UPDATE products SET
+                name = $1,
+                brand = $2,
+                category = $3,
+                article = $4,
+                cost_price = $5,
+                selling_price = $6,
+                min_price = $7,
+                max_price = $8,
+                total_stock = $9,
+                low_stock_limit = $10,
+                primary_image_url = $11,
+                description = $12,
+                active = true,
+                updated_at = NOW()
+              WHERE id = $13`,
+              [
+                finalName,
+                finalBrand,
+                finalCategory,
+                finalArticle,
+                finalCostPrice,
+                finalSellingPrice,
+                finalMinPrice,
+                finalMaxPrice,
+                importedStock,
+                importedLowStock,
+                rawImageUrl,
+                rawDesc,
+                existingProduct.id,
+              ]
+            );
+
+            const stockDiff = importedStock - prevStock;
+            if (stockDiff !== 0) {
+              await pgClient.query(
+                `INSERT INTO stock_movements (
+                  product_id, qty_change, prev_stock, new_stock, movement_type, reference_id, user_id, notes
+                ) VALUES ($1, $2, $3, $4, 'ADJUSTMENT', 'CSV-IMPORT-OVERWRITE', $5, 'CSV bulk import record overwrite')`,
+                [existingProduct.id, stockDiff, prevStock, importedStock, req.user!.id]
+              );
+            }
+            overwrittenCount++;
+            continue;
+          }
+        }
+
+        // Creating a NEW Product using existing generation functions
+        const predictedId = await getNextProductId();
+        if (predictedId > 99999) {
+          throw new Error('Product ID limit of 99,999 reached for 5-digit barcode generation.');
+        }
+
+        const catPrefix = parseCategoryPrefix(finalCategory);
+        const brandPrefix = parseBrandPrefix(finalBrand);
+
+        const cleanArticle = rawArticle || generateSuggestedArticle(catPrefix, predictedId);
+        const cleanName = String(rawItem.name ?? '').trim() || cleanArticle;
+
+        let finalSku = rawSku || generateSku(brandPrefix, cleanArticle, predictedId);
+        const skuConflict = await pgClient.query(
+          'SELECT id FROM products WHERE LOWER(sku) = LOWER($1)',
+          [finalSku]
+        );
+        if (skuConflict.rows.length > 0) {
+          finalSku = `${brandPrefix}-${cleanArticle}-${predictedId}`;
+        }
+
+        let finalBarcode = rawBarcode;
+        if (!finalBarcode) {
+          const generated = await generateProductEan13(predictedId);
+          finalBarcode = generated.barcode;
+        } else {
+          const analysis = analyzeBarcode(finalBarcode, prefix);
+          if (!analysis.isValid) {
+            throw new Error(`Row (${cleanArticle}): ${analysis.error || 'Invalid barcode'}`);
+          }
+          const bCheck = await pgClient.query('SELECT id FROM products WHERE barcode = $1', [
+            finalBarcode,
+          ]);
+          if (bCheck.rows.length > 0) {
+            const generated = await generateProductEan13(predictedId);
+            finalBarcode = generated.barcode;
+          }
+        }
+
+        const insertRes = await pgClient.query<{ id: number }>(
+          `INSERT INTO products (
+            name, brand, category, sku, article, barcode, primary_image_url,
+            description, cost_price, selling_price, min_price, max_price,
+            total_stock, low_stock_limit, active
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, true)
+          RETURNING id`,
+          [
+            cleanName,
+            finalBrand,
+            finalCategory,
+            finalSku,
+            cleanArticle,
+            finalBarcode,
+            rawImageUrl,
+            rawDesc,
+            finalCostPrice,
+            finalSellingPrice,
+            finalMinPrice,
+            finalMaxPrice,
+            importedStock,
+            importedLowStock,
+          ]
+        );
+
+        const actualId = insertRes.rows[0].id;
+        if (actualId !== predictedId && !rawBarcode) {
+          const correctedBarcode = generateEan13Barcode(prefix, actualId).barcode;
+          const correctedArticle = rawArticle || generateSuggestedArticle(catPrefix, actualId);
+          const correctedSku = rawSku || generateSku(brandPrefix, correctedArticle, actualId);
+          const correctedName = String(rawItem.name ?? '').trim() || correctedArticle;
+          await pgClient.query(
+            'UPDATE products SET barcode = $1, article = $2, sku = $3, name = $4 WHERE id = $5',
+            [correctedBarcode, correctedArticle, correctedSku, correctedName, actualId]
+          );
+        }
+
+        if (importedStock > 0) {
+          await pgClient.query(
+            `INSERT INTO stock_movements (
+              product_id, qty_change, prev_stock, new_stock, movement_type, reference_id, user_id, notes
+            ) VALUES ($1, $2, 0, $2, 'PURCHASE', 'CSV-IMPORT-NEW', $3, 'Initial product inventory via CSV import')`,
+            [actualId, importedStock, req.user!.id]
+          );
+        }
+
+        createdCount++;
+      }
+
+      await pgClient.query('COMMIT');
+      try {
+        await pgClient.query(
+          "SELECT setval('products_id_seq', (SELECT GREATEST(MAX(id), 1) FROM products))"
+        );
+      } catch (_) {}
+
+      res.status(200).json({
+        success: true,
+        message: `CSV Import complete: ${createdCount} created, ${mergedCount} merged, ${overwrittenCount} overwritten, ${skippedCount} skipped.`,
+        summary: {
+          createdCount,
+          mergedCount,
+          overwrittenCount,
+          skippedCount,
+          totalProcessed: items.length,
+        },
+      });
+    } catch (txErr: any) {
+      await pgClient.query('ROLLBACK');
+      throw txErr;
+    }
+  } catch (err: any) {
+    console.error('Bulk CSV Import error:', err);
+    res.status(400).json({ error: err.message || 'Failed to import CSV products.' });
   }
 });
 

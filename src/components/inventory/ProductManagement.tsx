@@ -14,9 +14,12 @@ import {
   DollarSign,
   Box,
   RefreshCw,
+  Upload,
+  CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../services/api.ts';
 import { ProductFormModal } from './ProductFormModal.tsx';
+import { CsvImportModal } from './CsvImportModal.tsx';
 import { BarcodeStickerModal } from './BarcodeStickerModal.tsx';
 import { BarcodeGeneratorTool } from './BarcodeGeneratorTool.tsx';
 import { SideEndBoxLabelModal } from './SideEndBoxLabelModal.tsx';
@@ -68,6 +71,8 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
   const [isBarcodeToolOpen, setIsBarcodeToolOpen] = useState(false);
   const [barcodeToolProduct, setBarcodeToolProduct] = useState<any | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
+  const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
+  const [importToastMessage, setImportToastMessage] = useState<string | null>(null);
 
   const handleOpenBarcodeTool = (product?: any) => {
     setBarcodeToolProduct(product || null);
@@ -207,6 +212,30 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
 
   return (
     <div className="space-y-4 p-4 max-w-7xl mx-auto">
+      {/* CSV Import Completion Toast Notification */}
+      <AnimatePresence>
+        {importToastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.96 }}
+            className="fixed top-4 right-4 z-50 max-w-md bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-xl border border-emerald-400/50 flex items-center justify-between gap-3 text-xs font-bold"
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{importToastMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImportToastMessage(null)}
+              className="text-white/80 hover:text-white px-1.5 py-0.5 rounded cursor-pointer"
+            >
+              ✕
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Top Banner & Action */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -223,7 +252,7 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             id="open-barcode-generator-btn"
             type="button"
@@ -236,19 +265,55 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
           </button>
 
           {isAdmin && (
-            <button
-              onClick={() => {
-                setEditingProduct(null);
-                setIsFormModalOpen(true);
-              }}
-              className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-800 dark:from-purple-600 dark:to-indigo-600 text-white border border-purple-400/40 dark:border-purple-400/50 shadow-md shadow-purple-600/25 dark:shadow-[0_0_14px_rgba(147,51,234,0.3)] font-bold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add New Product</span>
-            </button>
+            <>
+              <button
+                id="open-csv-import-btn"
+                type="button"
+                onClick={() => setIsCsvImportOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-200 border border-emerald-500 dark:border-emerald-400/40 shadow-sm font-bold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95"
+                title="Bulk Import or Update Products via CSV"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import CSV</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setEditingProduct(null);
+                  setIsFormModalOpen(true);
+                }}
+                className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:via-indigo-700 hover:to-purple-800 dark:from-purple-600 dark:to-indigo-600 text-white border border-purple-400/40 dark:border-purple-400/50 shadow-md shadow-purple-600/25 dark:shadow-[0_0_14px_rgba(147,51,234,0.3)] font-bold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition-all cursor-pointer active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Product</span>
+              </button>
+            </>
           )}
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {importToastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-700/70 text-emerald-800 dark:text-emerald-200 text-xs font-bold shadow-md"
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>{importToastMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImportToastMessage(null)}
+              className="text-emerald-700 dark:text-emerald-300 hover:underline text-[11px] cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Inventory KPI Summary Cards with Animated Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
@@ -768,6 +833,24 @@ export const ProductManagement: React.FC<ProductManagementProps> = ({
             product={adjustingProduct}
             onClose={() => setAdjustingProduct(null)}
             onSuccess={loadProducts}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isCsvImportOpen && (
+          <CsvImportModal
+            companySettings={companySettings}
+            existingProducts={products}
+            onClose={() => setIsCsvImportOpen(false)}
+            onImportSuccess={(summaryMsg) => {
+              setImportToastMessage(summaryMsg);
+              loadProducts();
+              loadFilterData();
+              setTimeout(() => {
+                setImportToastMessage((prev) => (prev === summaryMsg ? null : prev));
+              }, 7000);
+            }}
           />
         )}
       </AnimatePresence>
