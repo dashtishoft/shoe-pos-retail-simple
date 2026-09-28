@@ -163,16 +163,14 @@ export const api = {
     create: (body: any) => request<any>('/products', { method: 'POST', body: JSON.stringify(body) }),
     update: (id: number, body: any) => request<any>(`/products/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     delete: (id: number) => request<any>(`/products/${id}`, { method: 'DELETE' }),
-    generateBarcode: (productId?: number | string, colorId?: number | string) => {
+    generateBarcode: (productId?: number | string) => {
       const q = new URLSearchParams();
       if (productId !== undefined) q.set('productId', String(productId));
-      if (colorId !== undefined) q.set('colorId', String(colorId));
       const query = q.toString() ? `?${q.toString()}` : '';
       return request<{
         barcode: string;
         prefix: string;
         paddedProductId: string;
-        paddedColorId: string;
         checkDigit: number;
         formula: string;
       }>(`/products/generate-barcode${query}`);

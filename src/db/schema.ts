@@ -43,6 +43,8 @@ export const companySettings = pgTable('company_settings', {
   purchasePrefix: text('purchase_prefix').default('PUR-').notNull(),
   barcodePrefix: text('barcode_prefix').default('0108923').notNull(),
   invoiceFooter: text('invoice_footer').default('Thank you for shopping with us!').notNull(),
+  showReceiptLogo: boolean('show_receipt_logo').default(false).notNull(),
+  receiptLogo: text('receipt_logo').default(''),
   lowStockLimit: integer('low_stock_limit').default(5).notNull(),
   pricingMode: text('pricing_mode').default('FIXED').notNull(),
   pricingPolicyLocked: boolean('pricing_policy_locked').default(false).notNull(),

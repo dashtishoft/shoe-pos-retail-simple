@@ -59,14 +59,6 @@ export function formatProductId(productId: number | string): string {
 }
 
 /**
- * Legacy color ID formatter for compatibility.
- * @deprecated Variants are removed from the system.
- */
-export function formatColorId(_colorId?: number | string): string {
-  return '01';
-}
-
-/**
  * Calculates standard EAN-13 Modulo-10 check digit for a 12-digit numeric string.
  *
  * Algorithm:
@@ -107,12 +99,10 @@ export interface Ean13BarcodeResult {
  *
  * @param prefix 7-digit prefix from Settings
  * @param productId Product ID integer (1 to 99999)
- * @param _optionalVariantParam Ignored; kept for backward compatibility if called
  */
 export function generateEan13Barcode(
   prefix: string | undefined | null,
-  productId: number | string,
-  _optionalVariantParam?: any
+  productId: number | string
 ): Ean13BarcodeResult {
   const cleanPrefix = String(prefix || '').replace(/\D/g, '');
   if (cleanPrefix.length !== 7) {

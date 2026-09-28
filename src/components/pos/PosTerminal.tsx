@@ -43,7 +43,6 @@ interface CartItem {
   brandName?: string;
   brandLogo?: string;
   sku: string;
-  size?: string;
   barcode: string;
   totalStock: number;
   costPrice: number;

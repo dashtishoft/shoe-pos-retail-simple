@@ -438,9 +438,20 @@ export function exportStickersToPdf(
 
       // Price
       if (showPrice) {
+        const isFixed = String(
+          companySettings?.pricingPolicy ||
+          companySettings?.pricing_policy ||
+          companySettings?.pricingMode ||
+          companySettings?.pricing_mode ||
+          product?.pricingPolicy ||
+          product?.pricing_mode ||
+          product?.pricing_policy ||
+          'FIXED'
+        ).toUpperCase() === 'FIXED';
+        const pricePrefix = isFixed ? 'Fixed Price :' : 'Price :';
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(labelSize === '40x25' ? 6.5 : 8);
-        pdf.text(`PRICE: ${currency} ${price}`, centerX, currentY, { align: 'center' });
+        pdf.text(`${pricePrefix} ${currency} ${price}`, centerX, currentY, { align: 'center' });
       }
     }
 
@@ -563,9 +574,20 @@ export function exportBatchStickersToPdf(
         }
 
         if (showPrice) {
+          const isFixed = String(
+            companySettings?.pricingPolicy ||
+            companySettings?.pricing_policy ||
+            companySettings?.pricingMode ||
+            companySettings?.pricing_mode ||
+            prod?.pricingPolicy ||
+            prod?.pricing_mode ||
+            prod?.pricing_policy ||
+            'FIXED'
+          ).toUpperCase() === 'FIXED';
+          const pricePrefix = isFixed ? 'Fixed Price :' : 'Price :';
           pdf.setFont('helvetica', 'bold');
           pdf.setFontSize(8);
-          pdf.text(`PRICE: ${currency} ${price}`, centerX, curY, { align: 'center' });
+          pdf.text(`${pricePrefix} ${currency} ${price}`, centerX, curY, { align: 'center' });
         }
       });
 
@@ -627,9 +649,20 @@ export function exportBatchStickersToPdf(
         }
 
         if (showPrice) {
+          const isFixed = String(
+            companySettings?.pricingPolicy ||
+            companySettings?.pricing_policy ||
+            companySettings?.pricingMode ||
+            companySettings?.pricing_mode ||
+            prod?.pricingPolicy ||
+            prod?.pricing_mode ||
+            prod?.pricing_policy ||
+            'FIXED'
+          ).toUpperCase() === 'FIXED';
+          const pricePrefix = isFixed ? 'Fixed Price :' : 'Price :';
           pdf.setFont('helvetica', 'bold');
           pdf.setFontSize(is60x40 ? 9 : 8);
-          pdf.text(`PRICE: ${currency} ${price}`, centerX, curY, { align: 'center' });
+          pdf.text(`${pricePrefix} ${currency} ${price}`, centerX, curY, { align: 'center' });
         }
       });
 
@@ -888,8 +921,19 @@ export function exportStickersToImage(
 
     // Price
     if (showPrice) {
+      const isFixed = String(
+        companySettings?.pricingPolicy ||
+        companySettings?.pricing_policy ||
+        companySettings?.pricingMode ||
+        companySettings?.pricing_mode ||
+        product?.pricingPolicy ||
+        product?.pricing_mode ||
+        product?.pricing_policy ||
+        'FIXED'
+      ).toUpperCase() === 'FIXED';
+      const pricePrefix = isFixed ? 'Fixed Price :' : 'Price :';
       ctx.font = 'bold 16px sans-serif';
-      ctx.fillText(`PRICE: ${currency} ${price}`, width / 2, currentY);
+      ctx.fillText(`${pricePrefix} ${currency} ${price}`, width / 2, currentY);
     }
 
     const link = document.createElement('a');

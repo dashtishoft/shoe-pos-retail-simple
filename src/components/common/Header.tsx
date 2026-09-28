@@ -1223,7 +1223,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                   </button>
 
-                  {/* System Settings Item (Active when currentTab === 'settings') */}
+                  {/* System / Hardware Settings Item (Active when currentTab === 'settings') */}
                   <button
                     type="button"
                     onClick={() => {
@@ -1237,14 +1237,26 @@ export const Header: React.FC<HeaderProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <Settings
-                        className={`w-3.5 h-3.5 stroke-[2] transition-colors shrink-0 ${
-                          currentTab === 'settings'
-                            ? 'text-white'
-                            : 'text-current opacity-80 group-hover:opacity-100'
-                        }`}
-                      />
-                      <span className="truncate text-xs">System Settings</span>
+                      {((currentUser?.role || '').toLowerCase() === 'cashier') ? (
+                        <Printer
+                          className={`w-3.5 h-3.5 stroke-[2] transition-colors shrink-0 ${
+                            currentTab === 'settings'
+                              ? 'text-white'
+                              : 'text-current opacity-80 group-hover:opacity-100'
+                          }`}
+                        />
+                      ) : (
+                        <Settings
+                          className={`w-3.5 h-3.5 stroke-[2] transition-colors shrink-0 ${
+                            currentTab === 'settings'
+                              ? 'text-white'
+                              : 'text-current opacity-80 group-hover:opacity-100'
+                          }`}
+                        />
+                      )}
+                      <span className="truncate text-xs">
+                        {(currentUser?.role || '').toLowerCase() === 'cashier' ? 'Printer & Hardware' : 'System Settings'}
+                      </span>
                     </div>
                     {currentTab === 'settings' && (
                       <Check className="w-3.5 h-3.5 text-white stroke-[2.5] shrink-0" />

@@ -25,6 +25,14 @@ export function generateShoeStickerTspl(
   const sku = String(product.sku || '').substring(0, 18);
   const barcode = String(product.barcode || sku || '00000000');
   const price = formatStockPrice(getProductRetailPrice(product));
+  const rawPolicy = String(
+    product.pricingPolicy ||
+    product.pricing_mode ||
+    product.pricing_policy ||
+    'FIXED'
+  ).toUpperCase();
+  const isFixed = rawPolicy === 'FIXED';
+  const pricePrefix = isFixed ? 'Fixed Price :' : 'Price :';
 
   // TSPL commands in ASCII lines
   // DPI standard is 203 DPI (8 dots per mm) -> 50mm = 400 dots, 30mm = 240 dots
@@ -42,7 +50,7 @@ export function generateShoeStickerTspl(
     // 1D Code 128 Barcode: BARCODE X, Y, "CodeType", height, humanReadable, rotation, narrow, wide, "content"
     `BARCODE 20, 105, "128", 55, 1, 0, 2, 2, "${barcode}"`,
     // Price
-    `TEXT 20, 185, "3", 0, 1, 1, "PRICE: ${currency} ${price}"`,
+    `TEXT 20, 185, "3", 0, 1, 1, "${pricePrefix} ${currency} ${price}"`,
     // Print command
     `PRINT ${Math.max(1, copies)}, 1`,
     ``,

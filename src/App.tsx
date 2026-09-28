@@ -27,7 +27,7 @@ function resolveTargetTab(requestedTab: string | undefined | null, user: any): s
   const clean = (requestedTab || '').toLowerCase().trim();
 
   if (isCashier) {
-    if (!clean || clean === 'dashboard' || clean === 'purchases' || clean === 'settings') {
+    if (!clean || clean === 'dashboard' || clean === 'purchases') {
       return 'pos';
     }
     return clean;
@@ -102,7 +102,7 @@ export default function App() {
     const role = (currentUser?.role || '').toLowerCase();
     const isCashier = role === 'cashier';
     if (isCashier) {
-      if (currentTab === 'purchases' || currentTab === 'settings' || currentTab === 'dashboard') {
+      if (currentTab === 'purchases' || currentTab === 'dashboard') {
         setCurrentTab('pos');
         if (window.location.pathname !== '/installationWizard' && window.location.pathname !== '/install') {
           window.history.replaceState({}, '', '/pos');
@@ -416,9 +416,7 @@ export default function App() {
           handleTabChange('reports');
           break;
         case 'F7':
-          if (!isCashier) {
-            handleTabChange('settings');
-          }
+          handleTabChange('settings');
           break;
         case 'F8':
           // Shortcut for 'Delete Sale' (Clears active cart / cancels sale transaction)
@@ -682,27 +680,18 @@ export default function App() {
                   )}
 
                   {currentTab === 'settings' && (
-                    (currentUser?.role || '').toLowerCase() === 'cashier' ? (
-                      <PosTerminal
-                        currentUser={currentUser}
-                        companySettings={companySettings}
-                        initialExchange={activeExchangeForPos}
-                        onClearInitialExchange={() => setActiveExchangeForPos(null)}
-                      />
-                    ) : (
-                      <SettingsView
-                        currentUser={currentUser}
-                        companySettings={companySettings}
-                        onSettingsUpdated={handleSettingsUpdated}
-                        onOpenInstallWizard={async () => {
-                          const statusRes = await api.install.status().catch(() => null);
-                          if (statusRes) {
-                            setIsInstalled(statusRes.isInstalled);
-                          }
-                          setShowInstallWizard(true);
-                        }}
-                      />
-                    )
+                    <SettingsView
+                      currentUser={currentUser}
+                      companySettings={companySettings}
+                      onSettingsUpdated={handleSettingsUpdated}
+                      onOpenInstallWizard={async () => {
+                        const statusRes = await api.install.status().catch(() => null);
+                        if (statusRes) {
+                          setIsInstalled(statusRes.isInstalled);
+                        }
+                        setShowInstallWizard(true);
+                      }}
+                    />
                   )}
 
                   {currentTab === 'assistant' && (

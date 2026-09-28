@@ -100,6 +100,18 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
   const articleName = product.article || product.name || 'Shoe';
   const retailPrice = formatStockPrice(getProductRetailPrice(product, companySettings));
 
+  const rawPolicy = String(
+    companySettings?.pricingPolicy ||
+    companySettings?.pricing_policy ||
+    companySettings?.pricingMode ||
+    companySettings?.pricing_mode ||
+    product?.pricingPolicy ||
+    product?.pricing_mode ||
+    product?.pricing_policy ||
+    'FIXED'
+  ).toUpperCase();
+  const isFixedPolicy = rawPolicy === 'FIXED';
+
   const handleMatchStockQuantity = () => {
     const targetCopies = currentStock > 0 ? currentStock : 1;
     setCopies(targetCopies);
@@ -163,9 +175,9 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
 
   // Tag styling dimensions for preview
   const previewDimensions = {
-    '50x30': { widthClass: 'w-[230px]', heightClass: 'min-h-[140px]', label: '50 × 30 mm (Standard)' },
-    '40x25': { widthClass: 'w-[190px]', heightClass: 'min-h-[120px]', label: '40 × 25 mm (Compact)' },
-    '60x40': { widthClass: 'w-[270px]', heightClass: 'min-h-[170px]', label: '60 × 40 mm (Large)' },
+    '50x30': { widthClass: 'w-[280px]', heightClass: 'min-h-[165px]', label: '50 × 30 mm (Standard)' },
+    '40x25': { widthClass: 'w-[240px]', heightClass: 'min-h-[145px]', label: '40 × 25 mm (Compact)' },
+    '60x40': { widthClass: 'w-[320px]', heightClass: 'min-h-[195px]', label: '60 × 40 mm (Large)' },
   }[tagSize];
 
   return (
@@ -357,7 +369,7 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
                   { key: 'showBrand', label: 'Brand' },
                   { key: 'showCategory', label: 'Category' },
                   { key: 'showArticle', label: 'Article / Model' },
-                  { key: 'showPrice', label: 'Price / M.R.P.' },
+                  { key: 'showPrice', label: isFixedPolicy ? 'Fixed Price' : 'Price' },
                   { key: 'showBarcodeText', label: 'Barcode Digits' },
                 ].map((item) => {
                   const isChecked = options[item.key as keyof StickerCustomOptions] !== false;
@@ -456,24 +468,28 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
         )}
 
         {/* Live Tag Preview (Thermal Roll Visualizer) */}
-        <div className="flex-1 p-6 overflow-y-auto bg-slate-100 flex flex-col items-center justify-start gap-4">
+        <div className="flex-1 p-6 overflow-y-auto bg-slate-100 dark:bg-[#080D1A] flex flex-col items-center justify-start gap-4">
           <div className="text-center">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Live Thermal Tag Preview ({previewDimensions.label})
+            <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-purple-300 uppercase tracking-widest">
+              Live Physical Label Preview ({previewDimensions.label})
             </span>
           </div>
 
           <div className="flex flex-wrap gap-4 justify-center items-start">
             {/* Show 1st tag live representation */}
             <div
-              className={`${previewDimensions.widthClass} ${previewDimensions.heightClass} bg-white border-2 border-dashed border-slate-300 rounded-lg shadow-sm p-3 flex flex-col justify-between text-center select-none relative transition-all duration-200`}
+              className={`physical-label-preview ${previewDimensions.widthClass} ${previewDimensions.heightClass} bg-white dark:bg-[#111C30] border border-gray-200 dark:border-slate-800/90 rounded-md shadow-md p-4 flex flex-col justify-between text-center select-none relative transition-all duration-200 font-mono text-xs leading-tight`}
             >
               {/* Header: Store Name, Brand, Category */}
-              <div className="leading-tight">
-                {(options.showStore || options.showBrand || options.showCategory) && (
-                  <p className="text-[10px] uppercase font-bold text-slate-700 tracking-wider truncate">
+              <div className="text-center pb-2 border-b border-dashed border-gray-400 dark:border-slate-600/80">
+                {(options.showStore || !options.showBrand) && (
+                  <h4 className="label-store-name font-bold text-xs uppercase tracking-wider text-black dark:text-white truncate">
+                    {storeName} 👟
+                  </h4>
+                )}
+                {((options.showBrand && brandName) || (options.showCategory && categoryName)) && (
+                  <p className="text-[10px] text-gray-600 dark:text-slate-400 mt-0.5 truncate tracking-wide font-mono">
                     {[
-                      options.showStore ? storeName : null,
                       options.showBrand && brandName ? brandName : null,
                       options.showCategory && categoryName ? categoryName : null,
                     ]
@@ -481,19 +497,23 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
                       .join(' • ')}
                   </p>
                 )}
-
-                {/* Article Name */}
-                {options.showArticle && (
-                  <p className="text-xs font-black text-black truncate mt-0.5">{articleName}</p>
-                )}
               </div>
 
+              {/* Article Name */}
+              {options.showArticle && (
+                <div className="py-1 text-center">
+                  <span className="label-article-name text-xs sm:text-sm font-bold text-black dark:text-white uppercase tracking-wider truncate block font-mono">
+                    {articleName}
+                  </span>
+                </div>
+              )}
+
               {/* Barcode */}
-              <div className="flex justify-center -my-0.5">
+              <div className="flex justify-center -my-0.5 overflow-hidden">
                 <BarcodeSvg
                   value={product.barcode || product.sku}
                   width={tagSize === '40x25' ? 1.0 : tagSize === '60x40' ? 1.4 : 1.2}
-                  height={tagSize === '40x25' ? 22 : tagSize === '60x40' ? 34 : 28}
+                  height={tagSize === '40x25' ? 24 : tagSize === '60x40' ? 36 : 30}
                   fontSize={options.showBarcodeText ? 9 : 0}
                   displayValue={Boolean(options.showBarcodeText)}
                 />
@@ -501,9 +521,11 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
 
               {/* Price / MRP */}
               {options.showPrice && (
-                <div className="flex justify-between items-center text-[10px] font-bold border-t border-slate-200 pt-1 mt-0.5">
-                  <span className="text-slate-500 font-bold text-[9px] uppercase">M.R.P. / Price:</span>
-                  <span className="text-xs text-black font-black font-mono">
+                <div className="pt-2 border-t border-dashed border-gray-400 dark:border-slate-600/80 flex justify-between items-center text-[11px] font-bold text-black dark:text-white">
+                  <span className="text-[10px] text-gray-600 dark:text-slate-400 uppercase tracking-wide font-mono">
+                    {isFixedPolicy ? 'Fixed Price :' : 'Price :'}
+                  </span>
+                  <span className="label-price-value text-xs font-black font-mono text-black dark:text-white tracking-wide">
                     {currencySymbol} {retailPrice}
                   </span>
                 </div>
@@ -511,7 +533,7 @@ export const BarcodeStickerModal: React.FC<BarcodeStickerModalProps> = ({
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 text-center max-w-md">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center max-w-md font-mono">
             The barcode will print at high contrast 203 DPI standard for immediate reading by POS laser &amp; 2D CCD scanners.
           </p>
         </div>

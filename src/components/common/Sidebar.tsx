@@ -9,6 +9,7 @@ import {
   Users,
   TrendingUp,
   Settings,
+  Printer,
   BookOpen,
   X,
   Tag,
@@ -123,10 +124,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
-      header: 'ADMINISTRATION',
+      header: isCashier ? 'HARDWARE & SYSTEM' : 'ADMINISTRATION',
       items: [
         { id: 'reports', label: 'Reports', icon: TrendingUp, shortcut: 'F6' },
-        { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'F7' },
+        {
+          id: 'settings',
+          label: isCashier ? 'Printer & Hardware' : 'Settings',
+          icon: isCashier ? Printer : Settings,
+          shortcut: 'F7',
+        },
       ],
     },
     {

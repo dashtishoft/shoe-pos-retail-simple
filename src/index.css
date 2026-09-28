@@ -2033,8 +2033,17 @@ aside {
   .dark .invoice-preview-receipt .invoice-item-article,
   .dark .invoice-preview-receipt .invoice-item-price,
   .dark .invoice-preview-receipt .invoice-total-payable,
-  .dark .invoice-preview-receipt .invoice-total-payable span {
+  .dark .invoice-preview-receipt .invoice-total-payable span,
+  .dark .physical-label-preview .label-store-name,
+  .dark .physical-label-preview .label-article-name,
+  .dark .physical-label-preview .label-price-value,
+  .dark .physical-label-preview .label-price-value span {
     color: #ffffff !important;
+  }
+  .dark .physical-label-preview {
+    background-color: #111C30 !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc !important;
   }
   .dark .bg-slate-200 {
     background-color: #131F38 !important;

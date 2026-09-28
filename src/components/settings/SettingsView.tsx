@@ -62,8 +62,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onOpenInstallWizard,
   initialTab,
 }) => {
+  const isAdmin = (currentUser?.role || '').toUpperCase() === 'ADMIN';
+
   const [activeTab, setActiveTab] = useState<'store' | 'users' | 'printers' | 'backup' | 'install'>(
-    initialTab || 'store'
+    initialTab || (isAdmin ? 'store' : 'printers')
   );
 
   const { containerRef: settingsTabContainerRef } = useScrollActiveTab<HTMLDivElement>(activeTab, {
@@ -72,10 +74,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   });
 
   useEffect(() => {
-    if (initialTab) {
+    if (!isAdmin) {
+      setActiveTab('printers');
+    } else if (initialTab) {
       setActiveTab(initialTab);
     }
-  }, [initialTab]);
+  }, [isAdmin, initialTab]);
 
   // Store Settings Form
   const [formData, setFormData] = useState({
@@ -337,8 +341,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const isRefreshingUsersRef = useRef(false);
   const isRefreshingInstallRef = useRef(false);
 
-  const isAdmin = currentUser?.role === 'ADMIN';
-
   useEffect(() => {
     if (isAdmin) {
       loadUsers();
@@ -574,10 +576,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       >
         <div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-            System Settings &amp; Store Configuration
+            {isAdmin ? 'System Settings & Store Configuration' : 'Hardware & Printer Settings'}
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-purple-200/80 font-medium mt-0.5">
-            Store profile, cashier staff access, receipt &amp; label printers, database backup, and server installer
+            {isAdmin
+              ? 'Store profile, cashier staff access, receipt & label printers, database backup, and server installer'
+              : 'Receipt & barcode label printer configuration, USB hardware, and silent printing setup'}
           </p>
         </div>
 
@@ -613,28 +617,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         className="bg-white dark:bg-[#131B2E] px-3 sm:px-5 rounded-2xl border border-slate-200 dark:border-purple-900/60 shadow-sm transition-colors flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar scrollbar-none tab-scrollbar-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [&::-webkit-scrollbar-thumb]:hidden [&::-webkit-scrollbar-track]:hidden border-b border-b-slate-200/90 dark:border-b-purple-900/80"
       >
-        <button
-          id="settings-tab-store"
-          type="button"
-          data-active={activeTab === 'store'}
-          data-tab="store"
-          onClick={() => setActiveTab('store')}
-          className={`tab-underline-link relative px-3.5 sm:px-4 py-3.5 text-xs sm:text-sm font-semibold transition-colors duration-300 flex items-center space-x-2 whitespace-nowrap cursor-pointer shrink-0 ${
-            activeTab === 'store'
-              ? 'active text-purple-600 dark:text-purple-400 font-bold'
-              : 'text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300'
-          }`}
-        >
-          <Store className={`w-4 h-4 transition-colors duration-200 ${activeTab === 'store' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500'}`} />
-          <span>Shop &amp; Invoice Settings</span>
-          {activeTab === 'store' && (
-            <motion.div
-              layoutId="settingsActiveUnderline"
-              className="absolute bottom-0 left-0 right-0 h-[3px] rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 shadow-[0_2px_8px_rgba(147,51,234,0.45)] pointer-events-none z-10"
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-            />
-          )}
-        </button>
+        {isAdmin && (
+          <button
+            id="settings-tab-store"
+            type="button"
+            data-active={activeTab === 'store'}
+            data-tab="store"
+            onClick={() => setActiveTab('store')}
+            className={`tab-underline-link relative px-3.5 sm:px-4 py-3.5 text-xs sm:text-sm font-semibold transition-colors duration-300 flex items-center space-x-2 whitespace-nowrap cursor-pointer shrink-0 ${
+              activeTab === 'store'
+                ? 'active text-purple-600 dark:text-purple-400 font-bold'
+                : 'text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300'
+            }`}
+          >
+            <Store className={`w-4 h-4 transition-colors duration-200 ${activeTab === 'store' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400 dark:text-slate-500'}`} />
+            <span>Shop &amp; Invoice Settings</span>
+            {activeTab === 'store' && (
+              <motion.div
+                layoutId="settingsActiveUnderline"
+                className="absolute bottom-0 left-0 right-0 h-[3px] rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 shadow-[0_2px_8px_rgba(147,51,234,0.45)] pointer-events-none z-10"
+                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              />
+            )}
+          </button>
+        )}
 
         {isAdmin && (
           <button
@@ -748,7 +754,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </motion.div>
 
       {/* TAB 1: STORE & INVOICE SETTINGS */}
-      {activeTab === 'store' && (
+      {isAdmin && activeTab === 'store' && (
         <form onSubmit={handleSaveSettings} className="space-y-5">
           {settingsSuccess && (
             <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center space-x-3 shadow-xs">
@@ -1854,7 +1860,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       )}
 
       {/* TAB 5: SERVER INSTALLER & ROUTE LOCKDOWN */}
-      {activeTab === 'install' && (
+      {isAdmin && activeTab === 'install' && (
         <div className="bg-white dark:bg-[#131B2E] p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-purple-800/60 shadow-sm space-y-6 transition-colors">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 dark:border-purple-900/40 pb-4 gap-4">
             <div className="flex items-center space-x-3">

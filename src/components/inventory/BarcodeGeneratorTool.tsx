@@ -284,6 +284,18 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
           minSalePrice: parseFloat(String(customPrice)) || 0,
         };
 
+  const rawPolicy = String(
+    companySettings?.pricingPolicy ||
+    companySettings?.pricing_policy ||
+    companySettings?.pricingMode ||
+    companySettings?.pricing_mode ||
+    previewProduct?.pricingPolicy ||
+    previewProduct?.pricing_mode ||
+    previewProduct?.pricing_policy ||
+    'FIXED'
+  ).toUpperCase();
+  const isFixedPolicy = rawPolicy === 'FIXED';
+
   // Hardware Scanner Test simulation / check
   const handleTestScanKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -1040,7 +1052,7 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                       onChange={(e) => setShowPrice(e.target.checked)}
                       className="rounded border-gray-300 text-blue-600 focus:ring-0"
                     />
-                    <span>Retail Price</span>
+                    <span>{isFixedPolicy ? 'Fixed Price' : 'Price'}</span>
                   </label>
 
                   <label className="flex items-center space-x-1.5 cursor-pointer">
@@ -1057,9 +1069,9 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
 
               {/* LIVE SCANNABLE BARCODE PREVIEW CARD */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-gray-500 font-medium">
-                  <span>Live Physical Label Preview:</span>
-                  <span className="font-mono text-[11px] text-blue-600">
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-purple-300 font-medium font-mono">
+                  <span className="font-bold">Live Physical Label Preview:</span>
+                  <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold">
                     {labelFormat === 'roll_50x30'
                       ? '50mm × 30mm'
                       : labelFormat === 'roll_60x40'
@@ -1068,31 +1080,34 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
                   </span>
                 </div>
 
-                <div className="p-4 bg-slate-200/80 rounded-xl border border-gray-300 flex items-center justify-center min-h-[170px]">
+                <div className="p-5 bg-slate-100 dark:bg-[#080D1A] rounded-xl border border-gray-200 dark:border-slate-800/80 flex items-center justify-center min-h-[180px]">
                   {/* Exact Scaled Label Representation */}
                   <div
-                    className={`bg-white border border-gray-300 shadow-md rounded flex flex-col justify-between p-2.5 text-center select-none ${
-                      labelFormat === 'roll_60x40' ? 'w-[230px] h-[145px]' : 'w-[210px] h-[126px]'
+                    className={`physical-label-preview bg-white dark:bg-[#111C30] border border-gray-200 dark:border-slate-800/90 shadow-md rounded-md flex flex-col justify-between p-3.5 text-center select-none font-mono text-xs leading-tight transition-all duration-200 ${
+                      labelFormat === 'roll_60x40' ? 'w-[260px] min-h-[160px]' : 'w-[230px] min-h-[145px]'
                     }`}
                   >
                     {/* Header */}
-                    <div>
-                      {(showStore || showBrand) && (
-                        <p className="text-[9px] uppercase font-bold text-gray-500 tracking-wider truncate">
-                          {[showStore ? storeName : '', showBrand ? previewProduct.brandName : '']
-                            .filter(Boolean)
-                            .join(' • ')}
+                    <div className="text-center pb-1.5 border-b border-dashed border-gray-400 dark:border-slate-600/80">
+                      {(showStore || !showBrand) && (
+                        <p className="label-store-name text-[10px] uppercase font-bold text-black dark:text-white tracking-wider truncate">
+                          {storeName} 👟
+                        </p>
+                      )}
+                      {showBrand && previewProduct.brandName && (
+                        <p className="text-[9px] text-gray-600 dark:text-slate-400 font-mono truncate mt-0.5">
+                          {previewProduct.brandName}
                         </p>
                       )}
                       {showArticle && (
-                        <p className="text-[11px] font-bold text-black truncate mt-0.5">
+                        <p className="label-article-name text-xs font-bold text-black dark:text-white uppercase tracking-wider truncate mt-0.5">
                           {previewProduct.article || previewProduct.name}
                         </p>
                       )}
                     </div>
 
                     {/* SCANNABLE VECTOR BARCODE */}
-                    <div className="flex justify-center -my-1 overflow-hidden">
+                    <div className="flex justify-center -my-0.5 overflow-hidden">
                       <BarcodeSvg
                         value={previewProduct.barcode || previewProduct.sku}
                         format={customBarcodeFormat}
@@ -1105,9 +1120,11 @@ export const BarcodeGeneratorTool: React.FC<BarcodeGeneratorToolProps> = ({
 
                     {/* Price Footer */}
                     {showPrice && (
-                      <div className="flex justify-between items-center text-[10px] font-bold border-t border-gray-200 pt-1 mt-0.5">
-                        <span className="text-gray-500">PRICE:</span>
-                        <span className="text-xs text-black font-mono font-black">
+                      <div className="flex justify-between items-center text-[10px] font-bold border-t border-dashed border-gray-400 dark:border-slate-600/80 pt-1.5 mt-0.5 text-black dark:text-white">
+                        <span className="text-gray-600 dark:text-slate-400 uppercase tracking-wide">
+                          {isFixedPolicy ? 'Fixed Price :' : 'Price :'}
+                        </span>
+                        <span className="label-price-value text-xs text-black dark:text-white font-mono font-black">
                           {currencySymbol} {formatStockPrice(getProductRetailPrice(previewProduct, companySettings))}
                         </span>
                       </div>

@@ -57,6 +57,18 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
   const barcode = product?.barcode || sku;
   const retailPrice = formatStockPrice(getProductRetailPrice(product, companySettings));
 
+  const rawPolicy = String(
+    companySettings?.pricingPolicy ||
+    companySettings?.pricing_policy ||
+    companySettings?.pricingMode ||
+    companySettings?.pricing_mode ||
+    product?.pricingPolicy ||
+    product?.pricing_mode ||
+    product?.pricing_policy ||
+    'FIXED'
+  ).toUpperCase();
+  const isFixedPolicy = rawPolicy === 'FIXED';
+
   const activeColor = leaveBlankForMarker ? '' : colorInput;
   const activeSize = leaveBlankForMarker ? '' : sizeInput;
 
@@ -368,8 +380,8 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
         )}
 
         {/* Interactive Live Label Preview */}
-        <div className="flex-1 p-6 overflow-y-auto bg-slate-200/80 flex flex-col items-center justify-start">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">
+        <div className="flex-1 p-6 overflow-y-auto bg-slate-100 dark:bg-[#080D1A] flex flex-col items-center justify-start">
+          <div className="text-[11px] font-mono font-bold text-slate-500 dark:text-purple-300 uppercase tracking-widest mb-3">
             Real-Scale Preview (3&quot; x 4&quot; / 76mm × 102mm Shelf Box Label)
           </div>
 
@@ -377,10 +389,10 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
             {copiesArray.map((_, idx) => (
               <div
                 key={idx}
-                className={`bg-white text-black border-4 border-black rounded-sm shadow-xl p-3 flex flex-col select-none relative ${
+                className={`physical-label-preview bg-white dark:bg-[#111C30] border border-gray-200 dark:border-slate-800/90 rounded-md shadow-md p-4 flex flex-col justify-between text-center select-none relative transition-all duration-200 font-mono text-xs leading-tight ${
                   orientation === 'portrait'
-                    ? 'w-[280px] h-[375px] justify-between'
-                    : 'w-[375px] h-[280px] justify-between'
+                    ? 'w-[280px] h-[375px]'
+                    : 'w-[375px] h-[280px]'
                 }`}
                 style={{
                   boxSizing: 'border-box',
@@ -389,58 +401,61 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
                 {orientation === 'portrait' ? (
                   <>
                     {/* Header: Store / Brand Name */}
-                    <div className="bg-black text-white text-center py-1.5 px-2 -mx-3 -mt-3">
-                      <h4 className="text-xs font-black uppercase tracking-wider truncate">
-                        {storeName} {brandName ? `• ${brandName}` : ''}
+                    <div className="text-center pb-2 border-b border-dashed border-gray-400 dark:border-slate-600/80">
+                      <h4 className="label-store-name font-bold text-xs uppercase tracking-wider text-black dark:text-white truncate">
+                        {storeName} 👟
                       </h4>
+                      {brandName && (
+                        <p className="text-[10px] text-gray-600 dark:text-slate-400 mt-0.5 truncate tracking-wide font-mono">
+                          {brandName}
+                        </p>
+                      )}
                     </div>
 
                     {/* Product Title: Article Name */}
-                    <div className="text-center pt-2">
-                      <h2 className="text-base sm:text-lg font-black leading-tight tracking-tight text-black line-clamp-2 uppercase">
+                    <div className="py-2 text-center">
+                      <h2 className="label-article-name text-sm sm:text-base font-bold text-black dark:text-white uppercase tracking-wider line-clamp-2 block font-mono">
                         {articleName}
                       </h2>
                     </div>
 
-                    <div className="h-0.5 bg-black my-1"></div>
-
                     {/* Barcode Section */}
-                    <div className="flex flex-col items-center justify-center my-0.5">
-                      <BarcodeSvg value={barcode} width={1.8} height={46} fontSize={12} />
+                    <div className="flex flex-col items-center justify-center my-0.5 overflow-hidden">
+                      <BarcodeSvg value={barcode} width={1.8} height={46} fontSize={11} />
                     </div>
 
                     {/* Price Section */}
-                    <div className="text-center py-1 bg-gray-100 border-y border-black">
-                      <span className="text-[10px] font-extrabold uppercase text-gray-600 mr-1.5">
-                        RETAIL PRICE:
+                    <div className="py-2 border-t border-b border-dashed border-gray-400 dark:border-slate-600/80 flex justify-between items-center text-xs font-bold text-black dark:text-white">
+                      <span className="text-[10px] text-gray-600 dark:text-slate-400 uppercase tracking-wide font-mono">
+                        {isFixedPolicy ? 'Fixed Price :' : 'Price :'}
                       </span>
-                      <span className="text-base font-black text-black font-mono">
+                      <span className="label-price-value text-sm font-black font-mono text-black dark:text-white tracking-wide">
                         {currencySymbol} {retailPrice}
                       </span>
                     </div>
 
                     {/* Manual Write-In Box (For Rack Visibility) */}
-                    <div className="border-2 border-black p-2 mt-1 rounded-xs bg-white">
-                      <div className="text-[8px] font-black uppercase tracking-wider text-gray-500 text-center mb-1">
+                    <div className="border border-dashed border-gray-400 dark:border-slate-600/80 p-2.5 mt-1 rounded-md bg-slate-50/60 dark:bg-[#0c1424]">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-600 dark:text-slate-400 text-center mb-1.5 font-mono">
                         RACK STORAGE IDENTIFICATION
                       </div>
-                      <div className="space-y-1.5 text-xs font-black">
+                      <div className="space-y-2 text-xs font-mono">
                         <div className="flex items-center">
-                          <span className="w-16 shrink-0 tracking-wider">COLOR :</span>
+                          <span className="w-16 shrink-0 text-gray-600 dark:text-slate-400 tracking-wider text-[11px] font-bold">COLOR :</span>
                           {leaveBlankForMarker || !activeColor ? (
-                            <div className="flex-1 border-b-2 border-black h-4"></div>
+                            <div className="flex-1 border-b border-dashed border-gray-400 dark:border-slate-500 h-4"></div>
                           ) : (
-                            <span className="flex-1 uppercase text-sm font-black tracking-wide text-black pl-1">
+                            <span className="flex-1 uppercase text-xs font-bold tracking-wide text-black dark:text-white pl-1">
                               {activeColor}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center">
-                          <span className="w-16 shrink-0 tracking-wider">SIZE   :</span>
+                          <span className="w-16 shrink-0 text-gray-600 dark:text-slate-400 tracking-wider text-[11px] font-bold">SIZE   :</span>
                           {leaveBlankForMarker || !activeSize ? (
-                            <div className="flex-1 border-b-2 border-black h-4"></div>
+                            <div className="flex-1 border-b border-dashed border-gray-400 dark:border-slate-500 h-4"></div>
                           ) : (
-                            <span className="flex-1 uppercase text-base font-black tracking-wide text-black pl-1">
+                            <span className="flex-1 uppercase text-sm font-bold tracking-wide text-black dark:text-white pl-1">
                               {activeSize}
                             </span>
                           )}
@@ -451,47 +466,57 @@ export const SideEndBoxLabelModal: React.FC<SideEndBoxLabelModalProps> = ({
                 ) : (
                   <>
                     {/* Landscape layout */}
-                    <div className="bg-black text-white text-center py-1.5 px-2 -mx-3 -mt-3">
-                      <h4 className="text-xs font-black uppercase tracking-wider truncate">
-                        {storeName} {brandName ? `• ${brandName}` : ''}
+                    <div className="text-center pb-1.5 border-b border-dashed border-gray-400 dark:border-slate-600/80">
+                      <h4 className="label-store-name font-bold text-xs uppercase tracking-wider text-black dark:text-white truncate">
+                        {storeName} 👟
                       </h4>
+                      {brandName && (
+                        <p className="text-[10px] text-gray-600 dark:text-slate-400 mt-0.5 truncate tracking-wide font-mono">
+                          {brandName}
+                        </p>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 items-center my-1">
-                      <div className="space-y-1">
-                        <h2 className="text-sm font-black leading-tight text-black line-clamp-2 uppercase">
+                    <div className="grid grid-cols-2 gap-3 items-center my-1">
+                      <div className="space-y-1 text-left">
+                        <h2 className="label-article-name text-xs sm:text-sm font-bold text-black dark:text-white uppercase tracking-wider line-clamp-2 block font-mono">
                           {articleName}
                         </h2>
-                        <div className="text-xs font-black text-black">
-                          PRICE: {currencySymbol} {retailPrice}
+                        <div className="pt-1 border-t border-dashed border-gray-400 dark:border-slate-600/80 flex items-center justify-between text-xs font-bold text-black dark:text-white">
+                          <span className="text-[10px] text-gray-600 dark:text-slate-400 uppercase tracking-wide font-mono">
+                            {isFixedPolicy ? 'Fixed Price :' : 'Price :'}
+                          </span>
+                          <span className="label-price-value text-xs font-black font-mono text-black dark:text-white pl-1">
+                            {currencySymbol} {retailPrice}
+                          </span>
                         </div>
                       </div>
 
-                      <div className="flex justify-end">
-                        <BarcodeSvg value={barcode} width={1.5} height={42} fontSize={11} />
+                      <div className="flex justify-end overflow-hidden">
+                        <BarcodeSvg value={barcode} width={1.4} height={40} fontSize={10} />
                       </div>
                     </div>
 
                     {/* Manual Write-In Box */}
-                    <div className="border-2 border-black p-2 rounded-xs bg-white">
-                      <div className="text-[8px] font-black uppercase tracking-wider text-gray-500 text-center mb-1">
+                    <div className="border border-dashed border-gray-400 dark:border-slate-600/80 p-2 rounded-md bg-slate-50/60 dark:bg-[#0c1424]">
+                      <div className="text-[8px] font-bold uppercase tracking-wider text-gray-600 dark:text-slate-400 text-center mb-1 font-mono">
                         RACK STORAGE IDENTIFICATION
                       </div>
-                      <div className="grid grid-cols-2 gap-3 text-xs font-black">
+                      <div className="grid grid-cols-2 gap-3 text-xs font-mono">
                         <div className="flex items-center">
-                          <span className="w-14 shrink-0">COLOR :</span>
+                          <span className="w-14 shrink-0 text-gray-600 dark:text-slate-400 text-[10px] font-bold">COLOR :</span>
                           {leaveBlankForMarker || !activeColor ? (
-                            <div className="flex-1 border-b-2 border-black h-4"></div>
+                            <div className="flex-1 border-b border-dashed border-gray-400 dark:border-slate-500 h-3.5"></div>
                           ) : (
-                            <span className="flex-1 uppercase text-xs font-black pl-1">{activeColor}</span>
+                            <span className="flex-1 uppercase text-xs font-bold pl-1 text-black dark:text-white">{activeColor}</span>
                           )}
                         </div>
                         <div className="flex items-center">
-                          <span className="w-14 shrink-0">SIZE   :</span>
+                          <span className="w-14 shrink-0 text-gray-600 dark:text-slate-400 text-[10px] font-bold">SIZE   :</span>
                           {leaveBlankForMarker || !activeSize ? (
-                            <div className="flex-1 border-b-2 border-black h-4"></div>
+                            <div className="flex-1 border-b border-dashed border-gray-400 dark:border-slate-500 h-3.5"></div>
                           ) : (
-                            <span className="flex-1 uppercase text-sm font-black pl-1">{activeSize}</span>
+                            <span className="flex-1 uppercase text-xs font-bold pl-1 text-black dark:text-white">{activeSize}</span>
                           )}
                         </div>
                       </div>

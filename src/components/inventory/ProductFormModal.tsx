@@ -1328,7 +1328,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                           <span className="text-[10px] font-mono text-indigo-700 dark:text-indigo-300 font-bold">maxPrice</span>
                         </div>
                         <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
-                          Tag price / M.R.P. (must be &ge; Min Price).
+                          Tag price (must be &ge; Min Price).
                         </p>
                         <div className="relative">
                           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-indigo-700 dark:text-indigo-300 font-mono font-black text-base">
